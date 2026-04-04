@@ -1,6 +1,7 @@
 import hashlib
 import os
 import tempfile
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -59,14 +60,39 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
 
     file_hash = digest.hexdigest()
 
-    existing = db.execute(select(Submission).where(Submission.sha256 == file_hash).limit(1)).scalar_one_or_none()
-    if existing:
+    # Дедуп только среди реально загруженных артефактов (storage_key is not null).
+    existing_artifact = db.execute(
+        select(Submission)
+        .where(Submission.sha256 == file_hash)
+        .where(Submission.storage_key.is_not(None))
+        .order_by(Submission.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    if existing_artifact:
         os.unlink(temp_path)
+
+        submission = Submission(
+            source_type=SubmissionType.FILE,
+            filename=file.filename,
+            sha256=file_hash,
+            content_type=existing_artifact.content_type,
+            size_bytes=existing_artifact.size_bytes,
+            storage_key=existing_artifact.storage_key,
+            status=SubmissionStatus.QUEUED,
+        )
+        db.add(submission)
+        db.commit()
+        db.refresh(submission)
+
+        task = process_file_submission.delay(submission.id)
+
         return SubmissionCreateResponse(
-            submission_id=existing.id,
-            status=existing.status,
-            task_id="already_queued",
+            submission_id=submission.id,
+            status=submission.status,
+            task_id=task.id,
             deduplicated=True,
+            reused_from_submission_id=existing_artifact.id,
         )
 
     client = get_minio_client()

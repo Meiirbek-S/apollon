@@ -15,6 +15,7 @@ class SubmissionCreateResponse(BaseModel):
     status: SubmissionStatus
     task_id: str
     deduplicated: bool = False
+    reused_from_submission_id: int | None = None
 
 
 class SubmissionRead(BaseModel):
