@@ -186,7 +186,20 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
 
 
 def _is_static_report_complete(report: StaticAnalysisResult) -> bool:
-    return bool(report.original_filename and report.verdict_reason)
+    # базовые поля должны быть заполнены
+    if not (report.original_filename and report.verdict_reason):
+        return False
+
+    # после scoring v2, если есть suspicious imports,
+    # ожидаем детальные индикаторы вида "suspicious import: ... (+N)".
+    if report.suspicious_imports:
+        has_weighted_import_indicator = any(
+            indicator.startswith("suspicious import:") for indicator in (report.risk_indicators or [])
+        )
+        if not has_weighted_import_indicator:
+            return False
+
+    return True
 
 @router.get("/{submission_id}", response_model=SubmissionRead)
 def get_submission(submission_id: int, db: Session = Depends(get_db)) -> SubmissionRead:
