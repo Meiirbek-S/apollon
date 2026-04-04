@@ -1,9 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+import hashlib
+import os
+import tempfile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.submission import Submission, SubmissionStatus, SubmissionType
 from app.schemas.submission import FileSubmissionCreate, SubmissionCreateResponse, SubmissionRead
+from app.services.object_storage import ensure_bucket_exists, get_minio_client, upload_file
 from app.tasks.submission_tasks import process_file_submission
 
 router = APIRouter(prefix="/api/v1/submissions", tags=["submissions"])
@@ -27,6 +33,73 @@ def create_file_submission(payload: FileSubmissionCreate, db: Session = Depends(
     task = process_file_submission.delay(submission.id)
 
     return SubmissionCreateResponse(submission_id=submission.id, status=submission.status, task_id=task.id)
+
+
+@router.post("/file/upload", response_model=SubmissionCreateResponse, status_code=201)
+def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(get_db)) -> SubmissionCreateResponse:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="filename is required")
+
+    max_size = settings.max_upload_size_mb * 1024 * 1024
+    total_size = 0
+    digest = hashlib.sha256()
+
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        temp_path = tmp.name
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if total_size > max_size:
+                os.unlink(temp_path)
+                raise HTTPException(status_code=413, detail=f"file too large, limit is {settings.max_upload_size_mb} MB")
+            digest.update(chunk)
+            tmp.write(chunk)
+
+    file_hash = digest.hexdigest()
+
+    existing = db.execute(select(Submission).where(Submission.sha256 == file_hash).limit(1)).scalar_one_or_none()
+    if existing:
+        os.unlink(temp_path)
+        return SubmissionCreateResponse(
+            submission_id=existing.id,
+            status=existing.status,
+            task_id="already_queued",
+            deduplicated=True,
+        )
+
+    client = get_minio_client()
+    ensure_bucket_exists(client)
+
+    ext = os.path.splitext(file.filename)[1]
+    object_name = f"samples/{file_hash}{ext}"
+    content_type = file.content_type or "application/octet-stream"
+
+    upload_file(client, object_name=object_name, file_path=temp_path, content_type=content_type)
+    os.unlink(temp_path)
+
+    submission = Submission(
+        source_type=SubmissionType.FILE,
+        filename=file.filename,
+        sha256=file_hash,
+        content_type=content_type,
+        size_bytes=total_size,
+        storage_key=object_name,
+        status=SubmissionStatus.QUEUED,
+    )
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+
+    task = process_file_submission.delay(submission.id)
+
+    return SubmissionCreateResponse(
+        submission_id=submission.id,
+        status=submission.status,
+        task_id=task.id,
+        deduplicated=False,
+    )
 
 
 @router.get("/{submission_id}", response_model=SubmissionRead)

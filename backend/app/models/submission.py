@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, String
+from sqlalchemy import DateTime, Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -26,6 +26,9 @@ class Submission(Base):
     source_type: Mapped[SubmissionType] = mapped_column(Enum(SubmissionType), nullable=False)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[SubmissionStatus] = mapped_column(
         Enum(SubmissionStatus), default=SubmissionStatus.QUEUED, nullable=False
     )

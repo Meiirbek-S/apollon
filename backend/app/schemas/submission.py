@@ -14,6 +14,7 @@ class SubmissionCreateResponse(BaseModel):
     submission_id: int
     status: SubmissionStatus
     task_id: str
+    deduplicated: bool = False
 
 
 class SubmissionRead(BaseModel):
@@ -21,6 +22,9 @@ class SubmissionRead(BaseModel):
     source_type: SubmissionType
     filename: str
     sha256: str | None
+    content_type: str | None
+    size_bytes: int | None
+    storage_key: str | None
     status: SubmissionStatus
     created_at: datetime
 

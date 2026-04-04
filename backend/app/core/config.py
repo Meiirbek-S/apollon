@@ -21,7 +21,11 @@ class Settings(BaseSettings):
 
     minio_host: str = "minio"
     minio_port: int = 9000
+    minio_root_user: str = "minioadmin"
+    minio_root_password: str = "minioadmin"
     minio_bucket: str = "samples"
+
+    max_upload_size_mb: int = 20
 
     @computed_field
     @property
