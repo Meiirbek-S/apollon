@@ -9,6 +9,7 @@ MVP-платформа анализа файлов и URL на вредонос�
 - Шаг 4: минимальный static analysis в worker + endpoint отчета
 - Шаг 5: базовый URL analysis (submission + worker + report)
 - Шаг 6: enhanced static file analysis (PE + scoring model v1)
+- Шаг 7: dynamic analysis prep (safe contracts + dry-run task)
 
 ## Документация по шагам
 - `STEP_01_BACKEND_FOUNDATION.md`
@@ -17,3 +18,4 @@ MVP-платформа анализа файлов и URL на вредонос�
 - `STEP_04_STATIC_ANALYSIS_WORKER.md`
 - `STEP_05_URL_ANALYSIS_MVP.md`
 - `STEP_06_ENHANCED_STATIC_FILE_ANALYSIS.md`
+- `STEP_07_DYNAMIC_ANALYSIS_PREP.md`
