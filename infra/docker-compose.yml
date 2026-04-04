@@ -1,0 +1,63 @@
+services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: apollon_api
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: apollon_worker
+    env_file:
+      - ../.env
+    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+    depends_on:
+      - redis
+      - postgres
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: apollon_postgres
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-apollon}
+      POSTGRES_USER: ${POSTGRES_USER:-apollon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apollon_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: apollon_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ../redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: apollon_minio
+    env_file:
+      - ../.env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ../storage_data:/data
