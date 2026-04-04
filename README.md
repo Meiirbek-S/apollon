@@ -19,3 +19,9 @@ MVP-платформа анализа файлов и URL на вредонос�
 - `STEP_05_URL_ANALYSIS_MVP.md`
 - `STEP_06_ENHANCED_STATIC_FILE_ANALYSIS.md`
 - `STEP_07_DYNAMIC_ANALYSIS_PREP.md`
+
+
+## Frontend MVP
+- Path: `frontend/`
+- Stack: Next.js + TypeScript
+- Configure API base via `frontend/.env.example` -> `.env.local`
