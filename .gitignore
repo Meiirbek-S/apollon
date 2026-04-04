@@ -19,3 +19,10 @@ __pycache__/
 storage_data/
 pg_data/
 redis_data/
+
+# Frontend
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+.env.local
