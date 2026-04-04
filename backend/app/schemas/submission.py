@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -41,11 +42,27 @@ class SubmissionRead(BaseModel):
 
 class StaticAnalysisRead(BaseModel):
     submission_id: int
+    original_filename: str
     md5: str
     sha256: str
     file_size: int
     mime_type: str
+    extension: str
+    extension_mismatch: bool
+    risk_score: int
     risk_level: RiskLevel
+    risk_indicators: list[str]
+    verdict_reason: str
+
+    is_pe: bool
+    machine_type: str | None
+    compile_timestamp: str | None
+    entry_point: str | None
+    image_base: str | None
+    pe_sections: list[dict[str, Any]]
+    imported_functions: list[str]
+    suspicious_imports: list[str]
+
     created_at: datetime
 
     model_config = {"from_attributes": True}
