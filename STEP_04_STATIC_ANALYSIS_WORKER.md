@@ -36,6 +36,28 @@
 
 ---
 
+
+## Проверка регистрации Celery task
+
+Если worker пишет `Received unregistered task of type 'submission.process_file'`, проверь запуск worker:
+
+```bash
+docker compose -f infra/docker-compose.yml logs -f worker
+```
+
+В логе worker в секции `[tasks]` должен быть:
+
+- `submission.process_file`
+
+Дополнительно можно проверить список задач командой:
+
+```bash
+docker compose -f infra/docker-compose.yml exec worker \
+  celery -A app.tasks.celery_app:celery_app inspect registered
+```
+
+---
+
 ## Команды запуска
 
 ```bash

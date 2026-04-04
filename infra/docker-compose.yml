@@ -20,7 +20,7 @@ services:
     container_name: apollon_worker
     env_file:
       - ../.env
-    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+    command: celery -A app.tasks.celery_app:celery_app worker --loglevel=info
     depends_on:
       - redis
       - postgres
