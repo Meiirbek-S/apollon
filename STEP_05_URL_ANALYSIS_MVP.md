@@ -14,6 +14,7 @@
 - worker task `submission.process_url`
 - таблица `url_analysis_results`
 - `GET /api/v1/submissions/{id}/url-report`
+- универсальный `GET /api/v1/submissions/{id}/report` теперь работает и для URL
 
 ---
 
@@ -53,9 +54,13 @@ curl -X POST http://localhost:8000/api/v1/submissions/url \
 curl http://localhost:8000/api/v1/submissions/<submission_id>
 ```
 
-Получить URL-report:
+Получить URL-report (2 варианта):
 
 ```bash
+# унифицированный endpoint
+curl http://localhost:8000/api/v1/submissions/<submission_id>/report
+
+# специализированный endpoint (оставлен для совместимости)
 curl http://localhost:8000/api/v1/submissions/<submission_id>/url-report
 ```
 

@@ -1,6 +1,7 @@
 import hashlib
 import os
 import tempfile
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
@@ -185,8 +186,7 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)) -> Submiss
     return SubmissionRead.model_validate(submission)
 
 
-@router.get("/{submission_id}/report", response_model=StaticAnalysisRead)
-def get_static_report(submission_id: int, db: Session = Depends(get_db)) -> StaticAnalysisRead:
+def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRead | None:
     result = db.query(StaticAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
     if result:
         return StaticAnalysisRead.model_validate(result)
@@ -197,10 +197,7 @@ def get_static_report(submission_id: int, db: Session = Depends(get_db)) -> Stat
     while current_id and current_id not in visited:
         visited.add(current_id)
         submission = db.get(Submission, current_id)
-        if not submission:
-            break
-
-        if not submission.reused_from_submission_id:
+        if not submission or not submission.reused_from_submission_id:
             break
 
         current_id = submission.reused_from_submission_id
@@ -208,7 +205,28 @@ def get_static_report(submission_id: int, db: Session = Depends(get_db)) -> Stat
         if reused_result:
             return StaticAnalysisRead.model_validate(reused_result)
 
-    raise HTTPException(status_code=404, detail="static analysis report not found")
+    return None
+
+
+@router.get("/{submission_id}/report", response_model=dict[str, Any])
+def get_report(submission_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    submission = db.get(Submission, submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="submission not found")
+
+    if submission.source_type == SubmissionType.FILE:
+        static_report = _resolve_static_report(submission_id, db)
+        if not static_report:
+            raise HTTPException(status_code=404, detail="static analysis report not found")
+        return {"report_type": "FILE", "report": static_report.model_dump()}
+
+    if submission.source_type == SubmissionType.URL:
+        url_report = db.query(UrlAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
+        if not url_report:
+            raise HTTPException(status_code=404, detail="url analysis report not found")
+        return {"report_type": "URL", "report": UrlAnalysisRead.model_validate(url_report).model_dump()}
+
+    raise HTTPException(status_code=400, detail="unsupported submission type")
 
 
 @router.get("/{submission_id}/url-report", response_model=UrlAnalysisRead)
