@@ -17,23 +17,26 @@ from app.models.url_analysis import UrlAnalysisResult
 from app.services.object_storage import download_file, get_minio_client
 from app.tasks.celery_app import celery_app
 
-SUSPICIOUS_IMPORT_KEYWORDS = (
-    "virtualalloc",
-    "writeprocessmemory",
-    "createremotethread",
-    "winexec",
-    "shellexecute",
-    "urlmon",
-    "internetopen",
-    "internetconnect",
-    "regsetvalue",
-    "createprocess",
-    "loadlibrary",
-    "getprocaddress",
-)
+SUSPICIOUS_IMPORT_WEIGHTS = {
+    "virtualalloc": 10,
+    "createremotethread": 12,
+    "writeprocessmemory": 12,
+    "createprocess": 8,
+    "createprocessa": 8,
+    "createprocessw": 8,
+    "loadlibrary": 5,
+    "loadlibrarya": 5,
+    "loadlibraryw": 5,
+    "getprocaddress": 6,
+    "winexec": 8,
+    "shellexecute": 6,
+    "internetopen": 5,
+    "internetconnect": 5,
+    "urlmon": 5,
+    "regsetvalue": 6,
+}
 
-ABNORMAL_SECTION_NAMES = {".asdf", ".boom", ".x", "upx0", "upx1", "upx2"}
-
+ABNORMAL_SECTION_NAMES = {".asdf", ".boom", ".x", "upx0", "upx1", "upx2", ".upx"}
 
 @celery_app.task(name="submission.process_file")
 def process_file_submission(submission_id: int) -> dict[str, int | str]:
@@ -226,6 +229,16 @@ def _analyze_pe(temp_path: str, original_filename: str) -> dict:
     except Exception:
         ts = None
     result["compile_timestamp"] = ts
+    if ts:
+        try:
+            year = datetime.fromisoformat(ts).year
+            current_year = datetime.now(timezone.utc).year
+            if year < 2000 or year > current_year + 1:
+                result["pe_score"] += 5
+                result["pe_indicators"].append(f"suspicious compile timestamp year: {year}")
+        except Exception:
+            pass
+
     result["entry_point"] = hex(pe.OPTIONAL_HEADER.AddressOfEntryPoint)
     result["image_base"] = hex(pe.OPTIONAL_HEADER.ImageBase)
 
@@ -249,7 +262,7 @@ def _analyze_pe(temp_path: str, original_filename: str) -> dict:
         )
 
         if entropy >= 7.2:
-            result["pe_score"] += 12
+            result["pe_score"] += 10
             result["pe_indicators"].append(f"high entropy section: {name} ({entropy:.2f})")
 
         is_exec = bool(characteristics & 0x20000000)
@@ -274,12 +287,19 @@ def _analyze_pe(temp_path: str, original_filename: str) -> dict:
                 full_name = f"{dll_name}!{func_name}"
                 imported_functions.append(full_name)
                 lowered = func_name.lower()
-                if any(keyword in lowered for keyword in SUSPICIOUS_IMPORT_KEYWORDS):
+                matched_weight = 0
+                for keyword, weight in SUSPICIOUS_IMPORT_WEIGHTS.items():
+                    if keyword in lowered:
+                        matched_weight = max(matched_weight, weight)
+                if matched_weight:
                     suspicious_imports.add(full_name)
+                    result["pe_score"] += matched_weight
+                    result["pe_indicators"].append(f"suspicious import: {full_name} (+{matched_weight})")
 
     if suspicious_imports:
-        result["pe_score"] += min(30, 5 * len(suspicious_imports))
-        result["pe_indicators"].append(f"suspicious imports count: {len(suspicious_imports)}")
+        count_bonus = min(15, 2 * len(suspicious_imports))
+        result["pe_score"] += count_bonus
+        result["pe_indicators"].append(f"suspicious imports count bonus: {len(suspicious_imports)} (+{count_bonus})")
 
     result["sections"] = pe_sections
     result["imported_functions"] = sorted(imported_functions)

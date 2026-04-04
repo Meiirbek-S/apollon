@@ -1,4 +1,4 @@
-# Шаг 6: Enhanced static file analysis (MVP v1)
+# Шаг 6: Enhanced static file analysis (MVP v2 scoring)
 
 На этом шаге усиливаем file static-report без VirtualBox и без YARA.
 
@@ -31,16 +31,29 @@
 
 ---
 
-## Scoring model v1 (прозрачная)
+## Scoring model v2 (прозрачная)
 
-Индикаторы и баллы:
+Базовые факторы:
 - extension mismatch: +10
-- high entropy section (>= 7.2): +12 за секцию
-- executable + writable section: +15
-- abnormal section name: +10
-- packed/obfuscated heuristic (all sections high entropy): +15
-- suspicious imports: +5 за импорт (до +30)
-- PE-like extension but parse failed: +15
+- high entropy section (>7.2): +10 за секцию
+- RWX section: +15 за секцию
+- abnormal section name (`upx0/upx1/upx2/.upx/...`): +10
+- packed/obfuscated heuristic (all sections entropy>=7.0): +15
+- PE-like extension but parse failed: +25
+- suspicious compile timestamp year (<2000 или > current_year+1): +5
+
+Suspicious imports (взвешенно):
+- `VirtualAlloc`: +10
+- `CreateRemoteThread`: +12
+- `WriteProcessMemory`: +12
+- `CreateProcess*`: +8
+- `LoadLibrary*`: +5
+- `GetProcAddress`: +6
+- `WinExec`: +8
+- `ShellExecute*`: +6
+- `InternetOpen/InternetConnect/URLMon`: +5
+- `RegSetValue*`: +6
+- count bonus: `+2 * N`, максимум +15
 
 Пороги:
 - 0–24 => SAFE
