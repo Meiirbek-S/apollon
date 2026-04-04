@@ -78,6 +78,9 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
     if existing_artifact:
         os.unlink(temp_path)
 
+        existing_report = db.query(StaticAnalysisResult).filter_by(submission_id=existing_artifact.id).one_or_none()
+        status = SubmissionStatus.DONE if existing_report else SubmissionStatus.QUEUED
+
         submission = Submission(
             source_type=SubmissionType.FILE,
             filename=file.filename,
@@ -85,14 +88,23 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
             content_type=existing_artifact.content_type,
             size_bytes=existing_artifact.size_bytes,
             storage_key=existing_artifact.storage_key,
-            status=SubmissionStatus.QUEUED,
+            reused_from_submission_id=existing_artifact.id,
+            status=status,
         )
         db.add(submission)
         db.commit()
         db.refresh(submission)
 
-        task = process_file_submission.delay(submission.id)
+        if existing_report:
+            return SubmissionCreateResponse(
+                submission_id=submission.id,
+                status=submission.status,
+                task_id="reused-existing-report",
+                deduplicated=True,
+                reused_from_submission_id=existing_artifact.id,
+            )
 
+        task = process_file_submission.delay(submission.id)
         return SubmissionCreateResponse(
             submission_id=submission.id,
             status=submission.status,
@@ -145,6 +157,16 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)) -> Submiss
 @router.get("/{submission_id}/report", response_model=StaticAnalysisRead)
 def get_static_report(submission_id: int, db: Session = Depends(get_db)) -> StaticAnalysisRead:
     result = db.query(StaticAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
-    if not result:
-        raise HTTPException(status_code=404, detail="static analysis report not found")
-    return StaticAnalysisRead.model_validate(result)
+    if result:
+        return StaticAnalysisRead.model_validate(result)
+
+    submission = db.get(Submission, submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="submission not found")
+
+    if submission.reused_from_submission_id:
+        reused_result = db.query(StaticAnalysisResult).filter_by(submission_id=submission.reused_from_submission_id).one_or_none()
+        if reused_result:
+            return StaticAnalysisRead.model_validate(reused_result)
+
+    raise HTTPException(status_code=404, detail="static analysis report not found")

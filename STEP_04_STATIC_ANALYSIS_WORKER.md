@@ -22,6 +22,20 @@
 
 ---
 
+
+## Поведение для deduplicated submissions
+
+- Если повторный upload попал в дедуп и у исходного submission уже есть static report:
+  - новый submission создается сразу со статусом `DONE`,
+  - `task_id` возвращается как `reused-existing-report`,
+  - `/api/v1/submissions/{new_id}/report` возвращает отчет через `reused_from_submission_id`.
+
+- Если исходный submission еще без отчета:
+  - новый deduplicated submission получает `QUEUED`,
+  - worker строит отдельный отчет для нового submission.
+
+---
+
 ## Команды запуска
 
 ```bash

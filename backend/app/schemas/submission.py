@@ -27,6 +27,7 @@ class SubmissionRead(BaseModel):
     content_type: str | None
     size_bytes: int | None
     storage_key: str | None
+    reused_from_submission_id: int | None
     status: SubmissionStatus
     created_at: datetime
 
