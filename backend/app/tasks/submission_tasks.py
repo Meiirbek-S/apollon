@@ -166,8 +166,9 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
 
     pe_info = _analyze_pe(temp_path, original_filename)
 
-    if pe_info["is_pe"]:
+    if pe_info["pe_score"]:
         score += pe_info["pe_score"]
+    if pe_info["pe_indicators"]:
         indicators.extend(pe_info["pe_indicators"])
 
     risk_level = _score_to_level(score)
@@ -215,7 +216,7 @@ def _analyze_pe(temp_path: str, original_filename: str) -> dict:
     try:
         pe = pefile.PE(temp_path, fast_load=False)
     except Exception:
-        return result if not likely_pe else {**result, "pe_indicators": ["file has PE-like extension but parse failed"], "pe_score": 15}
+        return result if not likely_pe else {**result, "pe_indicators": ["file has PE-like extension but parse failed"], "pe_score": 25}
 
     result["is_pe"] = True
     machine_type = hex(pe.FILE_HEADER.Machine)
