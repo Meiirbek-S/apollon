@@ -20,3 +20,10 @@ def upload_file(client: Minio, object_name: str, file_path: str, content_type: s
         client.fput_object(settings.minio_bucket, object_name, file_path, content_type=content_type)
     except S3Error as exc:
         raise RuntimeError(f"failed to upload to minio: {exc}") from exc
+
+
+def download_file(client: Minio, object_name: str, file_path: str) -> None:
+    try:
+        client.fget_object(settings.minio_bucket, object_name, file_path)
+    except S3Error as exc:
+        raise RuntimeError(f"failed to download from minio: {exc}") from exc

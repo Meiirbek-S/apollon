@@ -8,8 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.models.static_analysis import StaticAnalysisResult
 from app.models.submission import Submission, SubmissionStatus, SubmissionType
-from app.schemas.submission import FileSubmissionCreate, SubmissionCreateResponse, SubmissionRead
+from app.schemas.submission import (
+    FileSubmissionCreate,
+    StaticAnalysisRead,
+    SubmissionCreateResponse,
+    SubmissionRead,
+)
 from app.services.object_storage import ensure_bucket_exists, get_minio_client, upload_file
 from app.tasks.submission_tasks import process_file_submission
 
@@ -134,3 +140,11 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)) -> Submiss
     if not submission:
         raise HTTPException(status_code=404, detail="submission not found")
     return SubmissionRead.model_validate(submission)
+
+
+@router.get("/{submission_id}/report", response_model=StaticAnalysisRead)
+def get_static_report(submission_id: int, db: Session = Depends(get_db)) -> StaticAnalysisRead:
+    result = db.query(StaticAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
+    if not result:
+        raise HTTPException(status_code=404, detail="static analysis report not found")
+    return StaticAnalysisRead.model_validate(result)

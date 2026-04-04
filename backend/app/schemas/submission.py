@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.models.static_analysis import RiskLevel
 from app.models.submission import SubmissionStatus, SubmissionType
 
 
@@ -27,6 +28,18 @@ class SubmissionRead(BaseModel):
     size_bytes: int | None
     storage_key: str | None
     status: SubmissionStatus
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StaticAnalysisRead(BaseModel):
+    submission_id: int
+    md5: str
+    sha256: str
+    file_size: int
+    mime_type: str
+    risk_level: RiskLevel
     created_at: datetime
 
     model_config = {"from_attributes": True}
