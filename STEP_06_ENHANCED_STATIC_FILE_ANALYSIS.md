@@ -36,7 +36,7 @@
 Базовые факторы:
 - extension mismatch: +10
 - high entropy section (>7.2): +10 за секцию
-- RWX section: +15 за секцию
+- RWX section: +15 за секцию (индикатор: "RWX section detected")
 - abnormal section name (`upx0/upx1/upx2/.upx/...`): +10
 - packed/obfuscated heuristic (all sections entropy>=7.0): +15
 - PE-like extension but parse failed: +25
@@ -48,7 +48,7 @@ Suspicious imports (взвешенно):
 - `WriteProcessMemory`: +12
 - `CreateProcess*`: +8
 - `LoadLibrary*`: +5
-- `GetProcAddress`: +6
+- `GetProcAddress`: +8
 - `WinExec`: +8
 - `ShellExecute*`: +6
 - `InternetOpen/InternetConnect/URLMon`: +5

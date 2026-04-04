@@ -27,7 +27,7 @@ SUSPICIOUS_IMPORT_WEIGHTS = {
     "loadlibrary": 5,
     "loadlibrarya": 5,
     "loadlibraryw": 5,
-    "getprocaddress": 6,
+    "getprocaddress": 8,
     "winexec": 8,
     "shellexecute": 6,
     "internetopen": 5,
@@ -269,7 +269,7 @@ def _analyze_pe(temp_path: str, original_filename: str) -> dict:
         is_write = bool(characteristics & 0x80000000)
         if is_exec and is_write:
             result["pe_score"] += 15
-            result["pe_indicators"].append(f"section is executable and writable: {name}")
+            result["pe_indicators"].append(f"RWX section detected: {name}")
 
         if name in ABNORMAL_SECTION_NAMES:
             result["pe_score"] += 10
@@ -318,6 +318,23 @@ def _score_to_level(score: int) -> RiskLevel:
 def _build_verdict_reason(score: int, risk_level: RiskLevel, indicators: list[str]) -> str:
     if not indicators:
         return f"{risk_level.value}: no suspicious static indicators found (score={score})"
+
+    categories: list[str] = []
+    if any("high entropy section" in i for i in indicators):
+        categories.append("high entropy")
+    if any("suspicious import:" in i for i in indicators):
+        categories.append("suspicious imports")
+    if any("RWX section detected" in i for i in indicators):
+        categories.append("RWX sections")
+    if any("abnormal section name" in i for i in indicators):
+        categories.append("abnormal section names")
+    if any("extension mismatch" in i for i in indicators):
+        categories.append("extension mismatch")
+
+    if categories:
+        summary = " + ".join(categories[:3])
+        return f"{risk_level.value}: {summary} (score={score})"
+
     top = "; ".join(indicators[:3])
     return f"{risk_level.value}: {top} (score={score})"
 
