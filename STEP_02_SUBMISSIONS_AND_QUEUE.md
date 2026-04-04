@@ -72,6 +72,21 @@ curl http://localhost:8000/api/v1/submissions/1
 
 ---
 
+
+## Если ранее падало с ошибкой `type "submissiontype" already exists`
+
+Это был кейс частично примененной миграции (тип enum создался, таблица — нет).
+
+После обновления миграции просто выполни повторно:
+
+```bash
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
+```
+
+Ожидаемо: миграция пройдет без ошибки дублирования enum-типов.
+
+---
+
 ## Что должно получиться
 
 - `POST /api/v1/submissions/file` возвращает `submission_id`, `status=QUEUED`, `task_id`.
