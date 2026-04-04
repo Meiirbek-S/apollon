@@ -11,6 +11,10 @@ class FileSubmissionCreate(BaseModel):
     sha256: str | None = Field(default=None, min_length=64, max_length=64)
 
 
+class UrlSubmissionCreate(BaseModel):
+    url: str = Field(min_length=8, max_length=2048)
+
+
 class SubmissionCreateResponse(BaseModel):
     submission_id: int
     status: SubmissionStatus
@@ -23,6 +27,7 @@ class SubmissionRead(BaseModel):
     id: int
     source_type: SubmissionType
     filename: str
+    target_url: str | None
     sha256: str | None
     content_type: str | None
     size_bytes: int | None
@@ -40,6 +45,18 @@ class StaticAnalysisRead(BaseModel):
     sha256: str
     file_size: int
     mime_type: str
+    risk_level: RiskLevel
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UrlAnalysisRead(BaseModel):
+    submission_id: int
+    normalized_url: str
+    domain: str
+    resolved_ip: str | None
+    uses_https: bool
     risk_level: RiskLevel
     created_at: datetime
 

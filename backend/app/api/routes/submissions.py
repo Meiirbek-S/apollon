@@ -10,14 +10,17 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.static_analysis import StaticAnalysisResult
 from app.models.submission import Submission, SubmissionStatus, SubmissionType
+from app.models.url_analysis import UrlAnalysisResult
 from app.schemas.submission import (
     FileSubmissionCreate,
     StaticAnalysisRead,
     SubmissionCreateResponse,
     SubmissionRead,
+    UrlAnalysisRead,
+    UrlSubmissionCreate,
 )
 from app.services.object_storage import ensure_bucket_exists, get_minio_client, upload_file
-from app.tasks.submission_tasks import process_file_submission
+from app.tasks.submission_tasks import process_file_submission, process_url_submission
 
 router = APIRouter(prefix="/api/v1/submissions", tags=["submissions"])
 
@@ -38,6 +41,24 @@ def create_file_submission(payload: FileSubmissionCreate, db: Session = Depends(
     db.refresh(submission)
 
     task = process_file_submission.delay(submission.id)
+
+    return SubmissionCreateResponse(submission_id=submission.id, status=submission.status, task_id=task.id)
+
+
+@router.post("/url", response_model=SubmissionCreateResponse, status_code=201)
+def create_url_submission(payload: UrlSubmissionCreate, db: Session = Depends(get_db)) -> SubmissionCreateResponse:
+    normalized = payload.url.strip()
+    submission = Submission(
+        source_type=SubmissionType.URL,
+        filename=normalized,
+        target_url=normalized,
+        status=SubmissionStatus.QUEUED,
+    )
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+
+    task = process_url_submission.delay(submission.id)
 
     return SubmissionCreateResponse(submission_id=submission.id, status=submission.status, task_id=task.id)
 
@@ -66,7 +87,6 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
 
     file_hash = digest.hexdigest()
 
-    # 1) Ищем лучший source для дедупа: сначала с готовым static report.
     source_with_report = db.execute(
         select(Submission)
         .join(StaticAnalysisResult, StaticAnalysisResult.submission_id == Submission.id)
@@ -76,7 +96,6 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
         .limit(1)
     ).scalar_one_or_none()
 
-    # 2) Fallback: любой загруженный артефакт с таким hash.
     latest_artifact = db.execute(
         select(Submission)
         .where(Submission.sha256 == file_hash)
@@ -168,12 +187,10 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)) -> Submiss
 
 @router.get("/{submission_id}/report", response_model=StaticAnalysisRead)
 def get_static_report(submission_id: int, db: Session = Depends(get_db)) -> StaticAnalysisRead:
-    # 1) Прямой lookup
     result = db.query(StaticAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
     if result:
         return StaticAnalysisRead.model_validate(result)
 
-    # 2) Цепочка reused_from_submission_id
     current_id = submission_id
     visited: set[int] = set()
 
@@ -192,3 +209,11 @@ def get_static_report(submission_id: int, db: Session = Depends(get_db)) -> Stat
             return StaticAnalysisRead.model_validate(reused_result)
 
     raise HTTPException(status_code=404, detail="static analysis report not found")
+
+
+@router.get("/{submission_id}/url-report", response_model=UrlAnalysisRead)
+def get_url_report(submission_id: int, db: Session = Depends(get_db)) -> UrlAnalysisRead:
+    result = db.query(UrlAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
+    if not result:
+        raise HTTPException(status_code=404, detail="url analysis report not found")
+    return UrlAnalysisRead.model_validate(result)

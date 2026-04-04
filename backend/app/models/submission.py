@@ -25,6 +25,7 @@ class Submission(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     source_type: Mapped[SubmissionType] = mapped_column(Enum(SubmissionType), nullable=False)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    target_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
