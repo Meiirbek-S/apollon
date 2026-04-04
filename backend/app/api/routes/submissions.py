@@ -110,7 +110,12 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
     if dedup_source:
         os.unlink(temp_path)
 
-        has_ready_report = source_with_report is not None
+        source_report = None
+        has_ready_report = False
+        if source_with_report is not None:
+            source_report = db.query(StaticAnalysisResult).filter_by(submission_id=source_with_report.id).one_or_none()
+            has_ready_report = bool(source_report and _is_static_report_complete(source_report))
+
         status = SubmissionStatus.DONE if has_ready_report else SubmissionStatus.QUEUED
 
         submission = Submission(
@@ -178,6 +183,11 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
     )
 
 
+
+
+def _is_static_report_complete(report: StaticAnalysisResult) -> bool:
+    return bool(report.original_filename and report.verdict_reason)
+
 @router.get("/{submission_id}", response_model=SubmissionRead)
 def get_submission(submission_id: int, db: Session = Depends(get_db)) -> SubmissionRead:
     submission = db.get(Submission, submission_id)
@@ -218,7 +228,14 @@ def get_report(submission_id: int, db: Session = Depends(get_db)) -> dict[str, A
         static_report = _resolve_static_report(submission_id, db)
         if not static_report:
             raise HTTPException(status_code=404, detail="static analysis report not found")
-        return {"report_type": "FILE", "report": static_report.model_dump()}
+
+        payload = static_report.model_dump()
+        if payload.get("submission_id") != submission_id:
+            payload["submission_id"] = submission_id
+            if submission.filename:
+                payload["original_filename"] = submission.filename
+
+        return {"report_type": "FILE", "report": payload}
 
     if submission.source_type == SubmissionType.URL:
         url_report = db.query(UrlAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
