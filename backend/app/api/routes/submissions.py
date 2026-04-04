@@ -66,8 +66,18 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
 
     file_hash = digest.hexdigest()
 
-    # Дедуп только среди реально загруженных артефактов (storage_key is not null).
-    existing_artifact = db.execute(
+    # 1) Ищем лучший source для дедупа: сначала с готовым static report.
+    source_with_report = db.execute(
+        select(Submission)
+        .join(StaticAnalysisResult, StaticAnalysisResult.submission_id == Submission.id)
+        .where(Submission.sha256 == file_hash)
+        .where(Submission.storage_key.is_not(None))
+        .order_by(Submission.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    # 2) Fallback: любой загруженный артефакт с таким hash.
+    latest_artifact = db.execute(
         select(Submission)
         .where(Submission.sha256 == file_hash)
         .where(Submission.storage_key.is_not(None))
@@ -75,33 +85,35 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
         .limit(1)
     ).scalar_one_or_none()
 
-    if existing_artifact:
+    dedup_source = source_with_report or latest_artifact
+
+    if dedup_source:
         os.unlink(temp_path)
 
-        existing_report = db.query(StaticAnalysisResult).filter_by(submission_id=existing_artifact.id).one_or_none()
-        status = SubmissionStatus.DONE if existing_report else SubmissionStatus.QUEUED
+        has_ready_report = source_with_report is not None
+        status = SubmissionStatus.DONE if has_ready_report else SubmissionStatus.QUEUED
 
         submission = Submission(
             source_type=SubmissionType.FILE,
             filename=file.filename,
             sha256=file_hash,
-            content_type=existing_artifact.content_type,
-            size_bytes=existing_artifact.size_bytes,
-            storage_key=existing_artifact.storage_key,
-            reused_from_submission_id=existing_artifact.id,
+            content_type=dedup_source.content_type,
+            size_bytes=dedup_source.size_bytes,
+            storage_key=dedup_source.storage_key,
+            reused_from_submission_id=dedup_source.id,
             status=status,
         )
         db.add(submission)
         db.commit()
         db.refresh(submission)
 
-        if existing_report:
+        if has_ready_report:
             return SubmissionCreateResponse(
                 submission_id=submission.id,
                 status=submission.status,
                 task_id="reused-existing-report",
                 deduplicated=True,
-                reused_from_submission_id=existing_artifact.id,
+                reused_from_submission_id=dedup_source.id,
             )
 
         task = process_file_submission.delay(submission.id)
@@ -110,7 +122,7 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
             status=submission.status,
             task_id=task.id,
             deduplicated=True,
-            reused_from_submission_id=existing_artifact.id,
+            reused_from_submission_id=dedup_source.id,
         )
 
     client = get_minio_client()
@@ -156,16 +168,26 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)) -> Submiss
 
 @router.get("/{submission_id}/report", response_model=StaticAnalysisRead)
 def get_static_report(submission_id: int, db: Session = Depends(get_db)) -> StaticAnalysisRead:
+    # 1) Прямой lookup
     result = db.query(StaticAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
     if result:
         return StaticAnalysisRead.model_validate(result)
 
-    submission = db.get(Submission, submission_id)
-    if not submission:
-        raise HTTPException(status_code=404, detail="submission not found")
+    # 2) Цепочка reused_from_submission_id
+    current_id = submission_id
+    visited: set[int] = set()
 
-    if submission.reused_from_submission_id:
-        reused_result = db.query(StaticAnalysisResult).filter_by(submission_id=submission.reused_from_submission_id).one_or_none()
+    while current_id and current_id not in visited:
+        visited.add(current_id)
+        submission = db.get(Submission, current_id)
+        if not submission:
+            break
+
+        if not submission.reused_from_submission_id:
+            break
+
+        current_id = submission.reused_from_submission_id
+        reused_result = db.query(StaticAnalysisResult).filter_by(submission_id=current_id).one_or_none()
         if reused_result:
             return StaticAnalysisRead.model_validate(reused_result)
 
