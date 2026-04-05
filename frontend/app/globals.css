@@ -9,3 +9,37 @@ button:disabled { opacity: .6; cursor: not-allowed; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .label { font-size: 13px; color: #6b7280; margin-bottom: 6px; }
 .nav { display: flex; gap: 14px; margin-bottom: 20px; }
+
+.file-report { padding: 0; overflow: hidden; }
+.verdict-banner { display: flex; justify-content: space-between; gap: 20px; padding: 22px; color: #fff; }
+.verdict-banner h2 { margin: 6px 0; font-size: 30px; }
+.verdict-text { margin-top: 8px; max-width: 680px; color: rgba(255, 255, 255, 0.92); }
+.verdict-safe { background: linear-gradient(135deg, #0f766e, #14b8a6); }
+.verdict-suspicious { background: linear-gradient(135deg, #b45309, #f59e0b); }
+.verdict-malware { background: linear-gradient(135deg, #b91c1c, #ef4444); }
+.score-box { min-width: 180px; background: rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 12px; align-self: center; }
+.score-box span, .score-box small { display: block; opacity: 0.9; }
+.score-box strong { display: block; font-size: 32px; line-height: 1.1; margin: 4px 0; }
+
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; padding: 16px; }
+.overview-grid.compact { padding: 0; }
+.overview-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fff; }
+.overview-card span { display: block; font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+.overview-card strong { font-size: 14px; word-break: break-word; }
+
+.soft { background: #f8fafc; margin: 0 16px 16px; border: 1px solid #e2e8f0; }
+.plain-list { margin: 8px 0 0; padding-left: 18px; }
+.plain-list li { margin: 6px 0; }
+.muted { color: #64748b; margin: 0; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chip { border-radius: 9999px; padding: 7px 10px; font-size: 13px; border: 1px solid transparent; }
+.chip-risk { background: #fff1f2; color: #9f1239; border-color: #fecdd3; }
+
+.tech-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; margin: 12px 0; }
+details > summary { cursor: pointer; font-weight: 600; }
+
+@media (max-width: 720px) {
+  .verdict-banner { flex-direction: column; }
+  .score-box { min-width: 0; width: 100%; }
+}

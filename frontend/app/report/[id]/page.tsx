@@ -1,4 +1,5 @@
 import { JsonBlock } from '@/components/JsonBlock'
+import { FileReportView } from '@/components/FileReportView'
 import { getReport, getSubmission } from '@/lib/api'
 
 export default async function ReportPage({ params }: { params: Promise<{ id: string }> }) {
@@ -19,34 +20,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
       </div>
 
       {reportResponse.report_type === 'FILE' && (
-        <div className="card">
-          <h3>FILE Report</h3>
-          <p><b>original filename:</b> {report.original_filename}</p>
-          <p><b>sha256:</b> {report.sha256}</p>
-          <p><b>mime type:</b> {report.mime_type}</p>
-          <p><b>extension:</b> {report.extension}</p>
-          <p><b>risk score:</b> {report.risk_score}</p>
-          <p><b>risk level:</b> {report.risk_level}</p>
-          <p><b>verdict reason:</b> {report.verdict_reason}</p>
-          <p><b>is_pe:</b> {String(report.is_pe)}</p>
-          <p><b>machine_type:</b> {report.machine_type ?? '-'}</p>
-          <p><b>compile_timestamp:</b> {report.compile_timestamp ?? '-'}</p>
-          <p><b>entry_point:</b> {report.entry_point ?? '-'}</p>
-          <p><b>image_base:</b> {report.image_base ?? '-'}</p>
-
-          <h4>Risk indicators</h4>
-          <ul>
-            {(report.risk_indicators || []).map((v: string) => (<li key={v}>{v}</li>))}
-          </ul>
-
-          <h4>Suspicious imports</h4>
-          <ul>
-            {(report.suspicious_imports || []).map((v: string) => (<li key={v}>{v}</li>))}
-          </ul>
-
-          <h4>PE Sections</h4>
-          <JsonBlock data={report.pe_sections || []} />
-        </div>
+        <FileReportView report={report} />
       )}
 
       {reportResponse.report_type === 'URL' && (
