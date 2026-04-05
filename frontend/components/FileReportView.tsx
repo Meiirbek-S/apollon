@@ -1,4 +1,5 @@
 import { JsonBlock } from '@/components/JsonBlock'
+import { humanizeIndicatorRu, verdictToRu } from '@/utils/fileReportRu'
 
 type FileReport = {
   original_filename?: string | null
@@ -61,26 +62,7 @@ function formatBytes(value?: number | null) {
 }
 
 function humanizeIndicator(indicator: string): string {
-  const value = indicator.toLowerCase()
-  if (value.includes('createprocess') || value.includes('winexec') || value.includes('shellexecute')) {
-    return 'Файл использует функции запуска других процессов.'
-  }
-  if (value.includes('loadlibrary') || value.includes('getprocaddress')) {
-    return 'Файл динамически загружает системные библиотеки.'
-  }
-  if (value.includes('virtualalloc') || value.includes('writememory') || value.includes('createremotethread')) {
-    return 'Обнаружены признаки внедрения кода в память.'
-  }
-  if (value.includes('powershell') || value.includes('cmd.exe')) {
-    return 'Файл может запускать скриптовые или консольные команды.'
-  }
-  if (value.includes('packed') || value.includes('entropy')) {
-    return 'Структура файла выглядит обфусцированной или упакованной.'
-  }
-  if (value.includes('network') || value.includes('socket') || value.includes('http')) {
-    return 'Файл содержит признаки сетевой активности.'
-  }
-  return indicator
+  return humanizeIndicatorRu(indicator)
 }
 
 function getTopReasons(report: FileReport): string[] {
@@ -98,24 +80,24 @@ export function FileReportView({ report }: { report: FileReport }) {
     <section className="card file-report">
       <div className={`verdict-banner ${verdictClass(verdict)}`}>
         <div>
-          <p className="muted">File security verdict</p>
-          <h2>{verdict}</h2>
+          <p className="muted">Оценка безопасности файла</p>
+          <h2>{verdictToRu(verdict)}</h2>
           <p className="verdict-text">{report.verdict_reason || meaningText(verdict)}</p>
         </div>
         <div className="score-box">
-          <span>Risk score</span>
+          <span>Уровень риска (баллы)</span>
           <strong>{report.risk_score ?? 0}</strong>
-          <small>Risk level: {report.risk_level || verdict}</small>
+          <small>Уровень угрозы: {report.risk_level || verdictToRu(verdict)}</small>
         </div>
       </div>
 
       <div className="overview-grid">
-        <div className="overview-card"><span>File name</span><strong>{report.original_filename || '-'}</strong></div>
-        <div className="overview-card"><span>File type</span><strong>{report.mime_type || '-'}</strong></div>
-        <div className="overview-card"><span>Size</span><strong>{formatBytes(report.file_size)}</strong></div>
-        <div className="overview-card"><span>Hash</span><strong>{shortenHash(report.sha256)}</strong></div>
-        <div className="overview-card"><span>PE format</span><strong>{report.is_pe ? 'Yes' : 'No'}</strong></div>
-        <div className="overview-card"><span>Compile time</span><strong>{report.compile_timestamp || '-'}</strong></div>
+        <div className="overview-card"><span>Имя файла</span><strong>{report.original_filename || '-'}</strong></div>
+        <div className="overview-card"><span>Тип файла</span><strong>{report.mime_type || '-'}</strong></div>
+        <div className="overview-card"><span>Размер</span><strong>{formatBytes(report.file_size)}</strong></div>
+        <div className="overview-card"><span>Хэш</span><strong>{shortenHash(report.sha256)}</strong></div>
+        <div className="overview-card"><span>PE-формат</span><strong>{report.is_pe ? 'Да' : 'Нет'}</strong></div>
+        <div className="overview-card"><span>Дата компиляции</span><strong>{report.compile_timestamp || '-'}</strong></div>
       </div>
 
       <div className="card soft">
@@ -132,7 +114,7 @@ export function FileReportView({ report }: { report: FileReport }) {
       </div>
 
       <div className="card soft">
-        <h3>Risk indicators</h3>
+        <h3>Признаки риска</h3>
         <div className="chips">
           {(report.risk_indicators || []).length > 0 ? (
             report.risk_indicators?.map((item) => (
@@ -141,51 +123,51 @@ export function FileReportView({ report }: { report: FileReport }) {
               </span>
             ))
           ) : (
-            <span className="muted">No explicit risk indicators found.</span>
+            <span className="muted">Явные признаки риска не обнаружены.</span>
           )}
         </div>
       </div>
 
       {report.is_pe && (
         <div className="card soft">
-          <h3>PE details</h3>
+          <h3>Детали PE</h3>
           <div className="overview-grid compact">
             <div className="overview-card"><span>Machine type</span><strong>{report.machine_type || '-'}</strong></div>
-            <div className="overview-card"><span>Entry point</span><strong>{report.entry_point || '-'}</strong></div>
-            <div className="overview-card"><span>Image base</span><strong>{report.image_base || '-'}</strong></div>
-            <div className="overview-card"><span>Suspicious imports</span><strong>{(report.suspicious_imports || []).length}</strong></div>
+            <div className="overview-card"><span>Точка входа</span><strong>{report.entry_point || '-'}</strong></div>
+            <div className="overview-card"><span>Базовый адрес</span><strong>{report.image_base || '-'}</strong></div>
+            <div className="overview-card"><span>Подозрительные импорты</span><strong>{(report.suspicious_imports || []).length}</strong></div>
           </div>
         </div>
       )}
 
       <div className="card soft">
-        <h3>What this means</h3>
+        <h3>Что это значит</h3>
         <p>{meaningText(verdict)}</p>
       </div>
 
       <details className="card soft">
-        <summary>Technical details</summary>
+        <summary>Технические детали</summary>
         <div className="tech-grid">
           <p><b>full sha256:</b> {report.sha256 || '-'}</p>
           <p><b>mime type:</b> {report.mime_type || '-'}</p>
           <p><b>extension:</b> {report.extension || '-'}</p>
           <p><b>is_pe:</b> {String(report.is_pe)}</p>
           <p><b>machine_type:</b> {report.machine_type || '-'}</p>
-          <p><b>entry_point:</b> {report.entry_point || '-'}</p>
-          <p><b>image_base:</b> {report.image_base || '-'}</p>
+          <p><b>entry_point (точка входа):</b> {report.entry_point || '-'}</p>
+          <p><b>image_base (базовый адрес):</b> {report.image_base || '-'}</p>
           <p><b>compile_timestamp:</b> {report.compile_timestamp || '-'}</p>
         </div>
 
-        <h4>Suspicious imports</h4>
+        <h4>Подозрительные импорты (suspicious imports)</h4>
         <JsonBlock data={report.suspicious_imports || []} />
-        <h4>Imported functions</h4>
+        <h4>Импортированные функции (imported functions)</h4>
         <JsonBlock data={report.imported_functions || []} />
-        <h4>PE sections</h4>
+        <h4>PE-секции (PE sections)</h4>
         <JsonBlock data={report.pe_sections || []} />
       </details>
 
       <details className="card soft">
-        <summary>Show full technical report (raw JSON)</summary>
+        <summary>Показать полный технический отчет (raw JSON)</summary>
         <JsonBlock data={report} />
       </details>
     </section>

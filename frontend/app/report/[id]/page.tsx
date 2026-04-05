@@ -44,7 +44,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
-      <h3>Raw report payload</h3>
+      <h3>{reportResponse.report_type === 'FILE' ? 'Сырой отчет (JSON)' : 'Raw report payload'}</h3>
       <JsonBlock data={reportResponse} />
     </div>
   )
