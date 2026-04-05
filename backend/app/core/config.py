@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     minio_bucket: str = "samples"
 
     max_upload_size_mb: int = 20
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     @computed_field
     @property
