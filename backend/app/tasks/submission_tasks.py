@@ -106,9 +106,18 @@ def _process_url_submission_impl(submission_id: int) -> dict[str, int | str]:
         submission.status = SubmissionStatus.PROCESSING
         db.commit()
 
-        normalized_url, domain, uses_https = _normalize_url(submission.target_url)
+        normalized_url, parsed_info = _normalize_url(submission.target_url)
+        domain = parsed_info["hostname"]
+        uses_https = parsed_info["uses_https"]
         resolved_ip = _resolve_domain(domain)
-        risk = _estimate_url_risk(domain=domain, uses_https=uses_https, resolved_ip=resolved_ip)
+        risk_data = _estimate_url_risk(
+            normalized_url=normalized_url,
+            hostname=domain,
+            uses_https=uses_https,
+            resolved_ip=resolved_ip,
+            port=parsed_info["port"],
+            query_present=parsed_info["query_present"],
+        )
 
         existing = db.query(UrlAnalysisResult).filter_by(submission_id=submission.id).one_or_none()
         if existing:
@@ -119,15 +128,32 @@ def _process_url_submission_impl(submission_id: int) -> dict[str, int | str]:
             submission_id=submission.id,
             normalized_url=normalized_url,
             domain=domain,
+            scheme=parsed_info["scheme"],
+            hostname=domain,
+            path=parsed_info["path"],
+            query_present=parsed_info["query_present"],
+            port=parsed_info["port"],
             resolved_ip=resolved_ip,
+            dns_resolved=bool(resolved_ip),
             uses_https=uses_https,
-            risk_level=risk,
+            final_url=normalized_url,
+            redirect_count=0,
+            risk_score=risk_data["risk_score"],
+            risk_level=risk_data["risk_level"],
+            risk_indicators=risk_data["risk_indicators"],
+            verdict_reason=risk_data["verdict_reason"],
+            analyzed_at=datetime.now(timezone.utc),
         )
         db.add(result)
         submission.status = SubmissionStatus.DONE
         db.commit()
 
-        return {"submission_id": submission_id, "result": "url_analyzed", "risk": risk.value}
+        return {
+            "submission_id": submission_id,
+            "result": "url_analyzed",
+            "risk": risk_data["risk_level"].value,
+            "risk_score": risk_data["risk_score"],
+        }
     except Exception:
         submission = db.get(Submission, submission_id)
         if submission:
@@ -359,7 +385,7 @@ def _build_verdict_reason(score: int, risk_level: RiskLevel, indicators: list[st
     return f"{risk_level.value}: {top} (score={score})"
 
 
-def _normalize_url(raw_url: str) -> tuple[str, str, bool]:
+def _normalize_url(raw_url: str) -> tuple[str, dict[str, str | int | bool | None]]:
     candidate = raw_url.strip()
     parsed = urlparse(candidate)
     if parsed.scheme not in ("http", "https"):
@@ -370,7 +396,15 @@ def _normalize_url(raw_url: str) -> tuple[str, str, bool]:
         raise ValueError("invalid URL: hostname is required")
 
     normalized_url = parsed.geturl()
-    return normalized_url, parsed.hostname.lower(), parsed.scheme == "https"
+    path = parsed.path if parsed.path else "/"
+    return normalized_url, {
+        "scheme": parsed.scheme.lower(),
+        "hostname": parsed.hostname.lower(),
+        "path": path,
+        "query_present": bool(parsed.query),
+        "port": parsed.port,
+        "uses_https": parsed.scheme.lower() == "https",
+    }
 
 
 def _resolve_domain(domain: str) -> str | None:
@@ -380,21 +414,73 @@ def _resolve_domain(domain: str) -> str | None:
         return None
 
 
-def _estimate_url_risk(domain: str, uses_https: bool, resolved_ip: str | None) -> RiskLevel:
+def _estimate_url_risk(
+    normalized_url: str,
+    hostname: str,
+    uses_https: bool,
+    resolved_ip: str | None,
+    port: int | None,
+    query_present: bool,
+) -> dict[str, RiskLevel | int | list[str] | str]:
     score = 0
+    indicators: list[str] = []
+
     if not uses_https:
         score += 20
+        indicators.append("URL не использует HTTPS")
+    else:
+        indicators.append("Сайт использует HTTPS")
 
     try:
-        ipaddress.ip_address(domain)
+        ipaddress.ip_address(hostname)
         score += 20
+        indicators.append("Используется прямой IP вместо доменного имени")
     except ValueError:
-        pass
+        indicators.append("Используется доменное имя")
 
-    if "xn--" in domain:
+    if "xn--" in hostname:
         score += 15
+        indicators.append("Обнаружен punycode-домен (возможна имитация)")
 
     if resolved_ip is None:
         score += 10
+        indicators.append("DNS-имя не резолвится")
+    else:
+        indicators.append("Домен успешно резолвится в IP")
 
-    return RiskLevel.SUSPICIOUS if score >= 20 else RiskLevel.SAFE
+    if query_present:
+        score += 5
+        indicators.append("URL содержит параметры запроса")
+    else:
+        indicators.append("URL не содержит параметров запроса")
+
+    if port and port not in {80, 443}:
+        score += 15
+        indicators.append(f"Обнаружен нестандартный порт: {port}")
+    else:
+        indicators.append("Подозрительный порт не обнаружен")
+
+    host_labels = hostname.split(".")
+    if len(hostname) > 60 or any(len(label) > 30 for label in host_labels):
+        score += 10
+        indicators.append("Домен выглядит необычно длинным")
+
+    if len(normalized_url) > 180:
+        score += 10
+        indicators.append("URL слишком длинный")
+
+    risk_level = RiskLevel.MALWARE_LIKE if score >= 60 else RiskLevel.SUSPICIOUS if score >= 25 else RiskLevel.SAFE
+
+    if risk_level == RiskLevel.SAFE:
+        verdict_reason = f"SAFE: явных опасных признаков не выявлено (score={score})"
+    elif risk_level == RiskLevel.SUSPICIOUS:
+        verdict_reason = f"SUSPICIOUS: обнаружены признаки, требующие проверки (score={score})"
+    else:
+        verdict_reason = f"MALWARE-LIKE: URL содержит несколько опасных признаков (score={score})"
+
+    return {
+        "risk_score": score,
+        "risk_level": risk_level,
+        "risk_indicators": indicators,
+        "verdict_reason": verdict_reason,
+    }

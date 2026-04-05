@@ -1,5 +1,6 @@
 import { JsonBlock } from '@/components/JsonBlock'
 import { FileReportView } from '@/components/FileReportView'
+import { UrlReportView } from '@/components/UrlReportView'
 import { getReport, getSubmission, getUrlReport, isApiError } from '@/lib/api'
 
 type ReportResponse = {
@@ -56,24 +57,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
       )}
 
       {reportResponse?.report_type === 'URL' && (
-        <div className="card">
-          <h3>URL Report</h3>
-          <p><b>normalized_url:</b> {report.normalized_url}</p>
-          <p><b>domain:</b> {report.domain}</p>
-          <p><b>resolved_ip:</b> {report.resolved_ip ?? '-'}</p>
-          <p><b>uses_https:</b> {String(report.uses_https)}</p>
-          <p><b>risk_level:</b> {report.risk_level}</p>
-          {report.risk_score !== undefined && <p><b>risk_score:</b> {report.risk_score}</p>}
-          {report.verdict_reason && <p><b>verdict:</b> {report.verdict_reason}</p>}
-          {report.risk_indicators && (
-            <>
-              <h4>Risk indicators</h4>
-              <ul>
-                {report.risk_indicators.map((v: string) => (<li key={v}>{v}</li>))}
-              </ul>
-            </>
-          )}
-        </div>
+        <UrlReportView report={report} />
       )}
 
       {!reportResponse && submission.source_type === 'URL' && (

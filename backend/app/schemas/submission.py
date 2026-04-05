@@ -72,9 +72,21 @@ class UrlAnalysisRead(BaseModel):
     submission_id: int
     normalized_url: str
     domain: str
+    scheme: str
+    hostname: str
+    path: str
+    query_present: bool
+    port: int | None
     resolved_ip: str | None
+    dns_resolved: bool
     uses_https: bool
+    final_url: str | None
+    redirect_count: int
+    risk_score: int
     risk_level: RiskLevel
+    risk_indicators: list[str]
+    verdict_reason: str
+    analyzed_at: datetime
     created_at: datetime
 
     model_config = {"from_attributes": True}
