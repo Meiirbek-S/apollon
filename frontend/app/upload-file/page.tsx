@@ -33,23 +33,25 @@ export default function UploadFilePage() {
   return (
     <div className="card">
       <h2>Upload File</h2>
+      <p className="muted">Загрузите файл для статического анализа и расчета risk score.</p>
       <form onSubmit={onSubmit} className="row">
-        <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        <input className="input-control" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
         <button disabled={!file || loading} type="submit">
           {loading ? 'Uploading...' : 'Upload & Analyze'}
         </button>
       </form>
 
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {loading && <p className="state-text">Файл загружается, подождите…</p>}
+      {error && <p className="error-text">{error}</p>}
 
       {result && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div className="card success-panel">
           <h3>Submission Created</h3>
           <p><b>submission_id:</b> {result.submission_id}</p>
           <p><b>status:</b> {result.status}</p>
           <p><b>source_type:</b> FILE</p>
           <p><b>deduplicated:</b> {String(result.deduplicated)}</p>
-          <div className="row">
+          <div className="row action-row">
             <Link href={`/submission/${result.submission_id}`}>Open Submission</Link>
             <Link href={`/report/${result.submission_id}`}>Open Report</Link>
           </div>

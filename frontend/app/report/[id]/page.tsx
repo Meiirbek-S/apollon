@@ -45,11 +45,13 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
     <div className="card">
       <h2>Report for submission #{id}</h2>
 
-      <div className="card">
+      <div className="card soft">
         <h3>Submission Summary</h3>
-        <p><b>submission id:</b> {submission.id}</p>
-        <p><b>status:</b> {submission.status}</p>
-        <p><b>source type:</b> {submission.source_type}</p>
+        <div className="overview-grid compact">
+          <div className="overview-card"><span>Submission ID</span><strong>{submission.id}</strong></div>
+          <div className="overview-card"><span>Status</span><strong>{submission.status}</strong></div>
+          <div className="overview-card"><span>Source type</span><strong>{submission.source_type}</strong></div>
+        </div>
       </div>
 
       {reportResponse?.report_type === 'FILE' && (
@@ -61,7 +63,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
       )}
 
       {!reportResponse && submission.source_type === 'URL' && (
-        <div className="card">
+        <div className="card empty-state">
           <h3>Отчет еще не готов</h3>
           <p>URL-анализ выполняется или был завершен без сохраненного отчета.</p>
           <p>{urlPendingReason || 'Результат URL-анализа пока не найден.'}</p>

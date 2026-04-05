@@ -31,28 +31,30 @@ export default function AnalyzeUrlPage() {
   return (
     <div className="card">
       <h2>Analyze URL</h2>
+      <p className="muted">Отправьте URL для оценки риска и получения понятного отчета.</p>
       <form onSubmit={onSubmit} className="row">
         <input
+          className="input-control"
           type="text"
           placeholder="https://example.com"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          style={{ minWidth: 420 }}
         />
         <button disabled={!url.trim() || loading} type="submit">
           {loading ? 'Submitting...' : 'Submit URL'}
         </button>
       </form>
 
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {loading && <p className="state-text">URL отправляется в очередь анализа…</p>}
+      {error && <p className="error-text">{error}</p>}
 
       {result && (
-        <div className="card" style={{ marginTop: 16 }}>
+        <div className="card success-panel">
           <h3>Submission Created</h3>
           <p><b>submission_id:</b> {result.submission_id}</p>
           <p><b>status:</b> {result.status}</p>
           <p><b>source_type:</b> URL</p>
-          <div className="row">
+          <div className="row action-row">
             <Link href={`/submission/${result.submission_id}`}>Open Submission</Link>
             <Link href={`/report/${result.submission_id}`}>Open Report</Link>
           </div>
