@@ -38,8 +38,7 @@ SUSPICIOUS_IMPORT_WEIGHTS = {
 
 ABNORMAL_SECTION_NAMES = {".asdf", ".boom", ".x", "upx0", "upx1", "upx2", ".upx"}
 
-@celery_app.task(name="submission.process_file")
-def process_file_submission(submission_id: int) -> dict[str, int | str]:
+def _process_file_submission_impl(submission_id: int) -> dict[str, int | str]:
     db = SessionLocal()
     temp_path = None
     try:
@@ -92,8 +91,7 @@ def process_file_submission(submission_id: int) -> dict[str, int | str]:
         db.close()
 
 
-@celery_app.task(name="submission.process_url")
-def process_url_submission(submission_id: int) -> dict[str, int | str]:
+def _process_url_submission_impl(submission_id: int) -> dict[str, int | str]:
     db = SessionLocal()
     try:
         submission = db.get(Submission, submission_id)
@@ -138,6 +136,28 @@ def process_url_submission(submission_id: int) -> dict[str, int | str]:
         raise
     finally:
         db.close()
+
+
+@celery_app.task(name="submission.process_file")
+def process_file_submission(submission_id: int) -> dict[str, int | str]:
+    return _process_file_submission_impl(submission_id)
+
+
+# Совместимость со старыми producer'ами, которые могли отправлять имя задачи по умолчанию.
+@celery_app.task(name="app.tasks.submission_tasks.process_file_submission")
+def process_file_submission_legacy(submission_id: int) -> dict[str, int | str]:
+    return _process_file_submission_impl(submission_id)
+
+
+@celery_app.task(name="submission.process_url")
+def process_url_submission(submission_id: int) -> dict[str, int | str]:
+    return _process_url_submission_impl(submission_id)
+
+
+# Совместимость со старыми producer'ами, которые могли отправлять имя задачи по умолчанию.
+@celery_app.task(name="app.tasks.submission_tasks.process_url_submission")
+def process_url_submission_legacy(submission_id: int) -> dict[str, int | str]:
+    return _process_url_submission_impl(submission_id)
 
 
 def _analyze_file(temp_path: str, original_filename: str) -> dict:
