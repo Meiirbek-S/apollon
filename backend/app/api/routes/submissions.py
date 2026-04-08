@@ -105,49 +105,60 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
         .limit(1)
     ).scalar_one_or_none()
 
-    dedup_source = source_with_report or latest_artifact
+    source_report = None
+    has_ready_report = False
+    if source_with_report is not None:
+        source_report = db.query(StaticAnalysisResult).filter_by(submission_id=source_with_report.id).one_or_none()
+        has_ready_report = bool(source_report and _is_static_report_complete(source_report))
 
-    if dedup_source:
+    # CASE 1: есть готовый повторно используемый отчет -> deduplicated=true и DONE без нового анализа
+    if source_with_report is not None and has_ready_report:
         os.unlink(temp_path)
-
-        source_report = None
-        has_ready_report = False
-        if source_with_report is not None:
-            source_report = db.query(StaticAnalysisResult).filter_by(submission_id=source_with_report.id).one_or_none()
-            has_ready_report = bool(source_report and _is_static_report_complete(source_report))
-
-        status = SubmissionStatus.DONE if has_ready_report else SubmissionStatus.QUEUED
-
         submission = Submission(
             source_type=SubmissionType.FILE,
             filename=file.filename,
             sha256=file_hash,
-            content_type=dedup_source.content_type,
-            size_bytes=dedup_source.size_bytes,
-            storage_key=dedup_source.storage_key,
-            reused_from_submission_id=dedup_source.id,
-            status=status,
+            content_type=source_with_report.content_type,
+            size_bytes=source_with_report.size_bytes,
+            storage_key=source_with_report.storage_key,
+            reused_from_submission_id=source_with_report.id,
+            status=SubmissionStatus.DONE,
         )
         db.add(submission)
         db.commit()
         db.refresh(submission)
+        return SubmissionCreateResponse(
+            submission_id=submission.id,
+            status=submission.status,
+            task_id="reused-existing-report",
+            deduplicated=True,
+            reused_from_submission_id=source_with_report.id,
+        )
 
-        if has_ready_report:
-            return SubmissionCreateResponse(
-                submission_id=submission.id,
-                status=submission.status,
-                task_id="reused-existing-report",
-                deduplicated=True,
-                reused_from_submission_id=dedup_source.id,
-            )
+    # CASE 2: готового отчета нет -> НЕ считаем это dedup-готовым результатом.
+    # Можно переиспользовать уже загруженный артефакт, но анализ запускается заново.
+    if latest_artifact and latest_artifact.storage_key:
+        os.unlink(temp_path)
+        submission = Submission(
+            source_type=SubmissionType.FILE,
+            filename=file.filename,
+            sha256=file_hash,
+            content_type=latest_artifact.content_type,
+            size_bytes=latest_artifact.size_bytes,
+            storage_key=latest_artifact.storage_key,
+            status=SubmissionStatus.QUEUED,
+        )
+        db.add(submission)
+        db.commit()
+        db.refresh(submission)
 
         task = process_file_submission.delay(submission.id)
         return SubmissionCreateResponse(
             submission_id=submission.id,
             status=submission.status,
             task_id=task.id,
-            deduplicated=True,
-            reused_from_submission_id=dedup_source.id,
+            deduplicated=False,
+            reused_from_submission_id=None,
         )
 
     client = get_minio_client()
