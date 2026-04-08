@@ -210,6 +210,10 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)) -> Submiss
 
 
 def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRead | None:
+    submission = db.get(Submission, submission_id)
+    if not submission:
+        return None
+
     result = db.query(StaticAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
     if result:
         return StaticAnalysisRead.model_validate(result)
@@ -228,6 +232,18 @@ def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRea
         if reused_result:
             return StaticAnalysisRead.model_validate(reused_result)
 
+    # fallback для старых/несвязанных дедуп-цепочек: ищем готовый отчет по тому же sha256
+    if submission.sha256:
+        same_hash_result = (
+            db.query(StaticAnalysisResult)
+            .join(Submission, Submission.id == StaticAnalysisResult.submission_id)
+            .filter(Submission.sha256 == submission.sha256)
+            .order_by(StaticAnalysisResult.created_at.desc())
+            .first()
+        )
+        if same_hash_result:
+            return StaticAnalysisRead.model_validate(same_hash_result)
+
     return None
 
 
@@ -240,6 +256,10 @@ def get_report(submission_id: int, db: Session = Depends(get_db)) -> dict[str, A
     if submission.source_type == SubmissionType.FILE:
         static_report = _resolve_static_report(submission_id, db)
         if not static_report:
+            if submission.status in {SubmissionStatus.QUEUED, SubmissionStatus.PROCESSING}:
+                raise HTTPException(status_code=404, detail="static analysis report not ready yet")
+            if submission.status == SubmissionStatus.FAILED:
+                raise HTTPException(status_code=404, detail="static analysis failed or report unavailable")
             raise HTTPException(status_code=404, detail="static analysis report not found")
 
         payload = static_report.model_dump()
