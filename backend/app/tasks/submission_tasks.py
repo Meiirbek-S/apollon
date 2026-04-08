@@ -1,5 +1,6 @@
 import hashlib
 import ipaddress
+import logging
 import os
 import socket
 import tempfile
@@ -9,7 +10,9 @@ from urllib.parse import urlparse
 
 import filetype
 import pefile
+from celery.exceptions import SoftTimeLimitExceeded
 
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.static_analysis import RiskLevel, StaticAnalysisResult
 from app.models.submission import Submission, SubmissionStatus
@@ -37,6 +40,7 @@ SUSPICIOUS_IMPORT_WEIGHTS = {
 }
 
 ABNORMAL_SECTION_NAMES = {".asdf", ".boom", ".x", "upx0", "upx1", "upx2", ".upx"}
+logger = logging.getLogger(__name__)
 
 def _process_file_submission_impl(submission_id: int) -> dict[str, int | str]:
     db = SessionLocal()
@@ -84,6 +88,7 @@ def _process_file_submission_impl(submission_id: int) -> dict[str, int | str]:
         if submission:
             submission.status = SubmissionStatus.FAILED
             db.commit()
+        logger.exception("process_file_submission failed", extra={"submission_id": submission_id})
         raise
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -159,29 +164,30 @@ def _process_url_submission_impl(submission_id: int) -> dict[str, int | str]:
         if submission:
             submission.status = SubmissionStatus.FAILED
             db.commit()
+        logger.exception("process_url_submission failed", extra={"submission_id": submission_id})
         raise
     finally:
         db.close()
 
 
-@celery_app.task(name="submission.process_file")
+@celery_app.task(name="submission.process_file", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
 def process_file_submission(submission_id: int) -> dict[str, int | str]:
     return _process_file_submission_impl(submission_id)
 
 
 # Совместимость со старыми producer'ами, которые могли отправлять имя задачи по умолчанию.
-@celery_app.task(name="app.tasks.submission_tasks.process_file_submission")
+@celery_app.task(name="app.tasks.submission_tasks.process_file_submission", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
 def process_file_submission_legacy(submission_id: int) -> dict[str, int | str]:
     return _process_file_submission_impl(submission_id)
 
 
-@celery_app.task(name="submission.process_url")
+@celery_app.task(name="submission.process_url", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
 def process_url_submission(submission_id: int) -> dict[str, int | str]:
     return _process_url_submission_impl(submission_id)
 
 
 # Совместимость со старыми producer'ами, которые могли отправлять имя задачи по умолчанию.
-@celery_app.task(name="app.tasks.submission_tasks.process_url_submission")
+@celery_app.task(name="app.tasks.submission_tasks.process_url_submission", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
 def process_url_submission_legacy(submission_id: int) -> dict[str, int | str]:
     return _process_url_submission_impl(submission_id)
 
@@ -263,7 +269,15 @@ def _analyze_pe(temp_path: str, original_filename: str) -> dict:
     likely_pe = original_filename.lower().endswith((".exe", ".dll", ".sys", ".scr"))
 
     try:
-        pe = pefile.PE(temp_path, fast_load=False)
+        pe = pefile.PE(temp_path, fast_load=True)
+        if hasattr(pe, "parse_data_directories"):
+            pe.parse_data_directories(
+                directories=[
+                    pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"],
+                ]
+            )
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:
         return result if not likely_pe else {**result, "pe_indicators": ["file has PE-like extension but parse failed"], "pe_score": 25}
 
