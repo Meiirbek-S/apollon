@@ -47,10 +47,23 @@ export default function UploadFilePage() {
       {result && (
         <div className="card success-panel">
           <h3>Submission Created</h3>
+          {result.deduplicated ? (
+            <p className="state-text">
+              {result.status === 'DONE'
+                ? 'Готовый результат найден: использован существующий отчет.'
+                : 'Файл уже известен системе: используется существующий артефакт, отчет обновляется в очереди.'}
+            </p>
+          ) : (
+            <p className="muted">Новый файл принят в обработку.</p>
+          )}
           <p><b>submission_id:</b> {result.submission_id}</p>
           <p><b>status:</b> {result.status}</p>
           <p><b>source_type:</b> FILE</p>
           <p><b>deduplicated:</b> {String(result.deduplicated)}</p>
+          {result.reused_from_submission_id && (
+            <p><b>reused_from_submission_id:</b> {result.reused_from_submission_id}</p>
+          )}
+          <p><b>task_id:</b> {result.task_id}</p>
           <div className="row action-row">
             <Link href={`/submission/${result.submission_id}`}>Open Submission</Link>
             <Link href={`/report/${result.submission_id}`}>Open Report</Link>
