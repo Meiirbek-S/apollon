@@ -219,7 +219,7 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
         indicators.append(f"extension mismatch: .{file_ext} vs .{detected_ext}")
         score += 10
 
-    pe_info = _analyze_pe(temp_path, original_filename)
+    pe_info = _analyze_pe(temp_path, original_filename, file_size)
 
     if pe_info["pe_score"]:
         score += pe_info["pe_score"]
@@ -252,7 +252,7 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
     }
 
 
-def _analyze_pe(temp_path: str, original_filename: str) -> dict:
+def _analyze_pe(temp_path: str, original_filename: str, file_size: int) -> dict:
     result = {
         "is_pe": False,
         "machine_type": None,
@@ -267,6 +267,13 @@ def _analyze_pe(temp_path: str, original_filename: str) -> dict:
     }
 
     likely_pe = original_filename.lower().endswith((".exe", ".dll", ".sys", ".scr"))
+    deep_parse_limit = settings.pe_deep_parse_max_size_mb * 1024 * 1024
+    if file_size > deep_parse_limit:
+        return {
+            **result,
+            "pe_indicators": [f"PE deep parse skipped: file size {file_size} bytes exceeds limit"],
+            "pe_score": 5 if likely_pe else 0,
+        }
 
     try:
         pe = pefile.PE(temp_path, fast_load=True)
