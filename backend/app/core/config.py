@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     minio_bucket: str = "samples"
 
     max_upload_size_mb: int = 20
+<<<<<<< HEAD
+=======
+    analysis_task_soft_time_limit_sec: int = 180
+    pe_deep_parse_max_size_mb: int = 8
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 
     @computed_field
     @property

@@ -1,5 +1,9 @@
 import hashlib
 import ipaddress
+<<<<<<< HEAD
+=======
+import logging
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 import os
 import socket
 import tempfile
@@ -9,7 +13,13 @@ from urllib.parse import urlparse
 
 import filetype
 import pefile
+<<<<<<< HEAD
 
+=======
+from celery.exceptions import SoftTimeLimitExceeded
+
+from app.core.config import settings
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 from app.db.session import SessionLocal
 from app.models.static_analysis import RiskLevel, StaticAnalysisResult
 from app.models.submission import Submission, SubmissionStatus
@@ -37,9 +47,15 @@ SUSPICIOUS_IMPORT_WEIGHTS = {
 }
 
 ABNORMAL_SECTION_NAMES = {".asdf", ".boom", ".x", "upx0", "upx1", "upx2", ".upx"}
+<<<<<<< HEAD
 
 @celery_app.task(name="submission.process_file")
 def process_file_submission(submission_id: int) -> dict[str, int | str]:
+=======
+logger = logging.getLogger(__name__)
+
+def _process_file_submission_impl(submission_id: int) -> dict[str, int | str]:
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     db = SessionLocal()
     temp_path = None
     try:
@@ -85,6 +101,10 @@ def process_file_submission(submission_id: int) -> dict[str, int | str]:
         if submission:
             submission.status = SubmissionStatus.FAILED
             db.commit()
+<<<<<<< HEAD
+=======
+        logger.exception("process_file_submission failed", extra={"submission_id": submission_id})
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
         raise
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -92,8 +112,12 @@ def process_file_submission(submission_id: int) -> dict[str, int | str]:
         db.close()
 
 
+<<<<<<< HEAD
 @celery_app.task(name="submission.process_url")
 def process_url_submission(submission_id: int) -> dict[str, int | str]:
+=======
+def _process_url_submission_impl(submission_id: int) -> dict[str, int | str]:
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     db = SessionLocal()
     try:
         submission = db.get(Submission, submission_id)
@@ -108,9 +132,24 @@ def process_url_submission(submission_id: int) -> dict[str, int | str]:
         submission.status = SubmissionStatus.PROCESSING
         db.commit()
 
+<<<<<<< HEAD
         normalized_url, domain, uses_https = _normalize_url(submission.target_url)
         resolved_ip = _resolve_domain(domain)
         risk = _estimate_url_risk(domain=domain, uses_https=uses_https, resolved_ip=resolved_ip)
+=======
+        normalized_url, parsed_info = _normalize_url(submission.target_url)
+        domain = parsed_info["hostname"]
+        uses_https = parsed_info["uses_https"]
+        resolved_ip = _resolve_domain(domain)
+        risk_data = _estimate_url_risk(
+            normalized_url=normalized_url,
+            hostname=domain,
+            uses_https=uses_https,
+            resolved_ip=resolved_ip,
+            port=parsed_info["port"],
+            query_present=parsed_info["query_present"],
+        )
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 
         existing = db.query(UrlAnalysisResult).filter_by(submission_id=submission.id).one_or_none()
         if existing:
@@ -121,25 +160,81 @@ def process_url_submission(submission_id: int) -> dict[str, int | str]:
             submission_id=submission.id,
             normalized_url=normalized_url,
             domain=domain,
+<<<<<<< HEAD
             resolved_ip=resolved_ip,
             uses_https=uses_https,
             risk_level=risk,
+=======
+            scheme=parsed_info["scheme"],
+            hostname=domain,
+            path=parsed_info["path"],
+            query_present=parsed_info["query_present"],
+            port=parsed_info["port"],
+            resolved_ip=resolved_ip,
+            dns_resolved=bool(resolved_ip),
+            uses_https=uses_https,
+            final_url=normalized_url,
+            redirect_count=0,
+            risk_score=risk_data["risk_score"],
+            risk_level=risk_data["risk_level"],
+            risk_indicators=risk_data["risk_indicators"],
+            verdict_reason=risk_data["verdict_reason"],
+            analyzed_at=datetime.now(timezone.utc),
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
         )
         db.add(result)
         submission.status = SubmissionStatus.DONE
         db.commit()
 
+<<<<<<< HEAD
         return {"submission_id": submission_id, "result": "url_analyzed", "risk": risk.value}
+=======
+        return {
+            "submission_id": submission_id,
+            "result": "url_analyzed",
+            "risk": risk_data["risk_level"].value,
+            "risk_score": risk_data["risk_score"],
+        }
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     except Exception:
         submission = db.get(Submission, submission_id)
         if submission:
             submission.status = SubmissionStatus.FAILED
             db.commit()
+<<<<<<< HEAD
+=======
+        logger.exception("process_url_submission failed", extra={"submission_id": submission_id})
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
         raise
     finally:
         db.close()
 
 
+<<<<<<< HEAD
+=======
+@celery_app.task(name="submission.process_file", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
+def process_file_submission(submission_id: int) -> dict[str, int | str]:
+    return _process_file_submission_impl(submission_id)
+
+
+# Совместимость со старыми producer'ами, которые могли отправлять имя задачи по умолчанию.
+@celery_app.task(name="app.tasks.submission_tasks.process_file_submission", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
+def process_file_submission_legacy(submission_id: int) -> dict[str, int | str]:
+    return _process_file_submission_impl(submission_id)
+
+
+@celery_app.task(name="submission.process_url", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
+def process_url_submission(submission_id: int) -> dict[str, int | str]:
+    return _process_url_submission_impl(submission_id)
+
+
+# Совместимость со старыми producer'ами, которые могли отправлять имя задачи по умолчанию.
+@celery_app.task(name="app.tasks.submission_tasks.process_url_submission", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
+def process_url_submission_legacy(submission_id: int) -> dict[str, int | str]:
+    return _process_url_submission_impl(submission_id)
+
+
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 def _analyze_file(temp_path: str, original_filename: str) -> dict:
     md5_hash = hashlib.md5()
     sha256_hash = hashlib.sha256()
@@ -167,7 +262,11 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
         indicators.append(f"extension mismatch: .{file_ext} vs .{detected_ext}")
         score += 10
 
+<<<<<<< HEAD
     pe_info = _analyze_pe(temp_path, original_filename)
+=======
+    pe_info = _analyze_pe(temp_path, original_filename, file_size)
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 
     if pe_info["pe_score"]:
         score += pe_info["pe_score"]
@@ -200,7 +299,11 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
     }
 
 
+<<<<<<< HEAD
 def _analyze_pe(temp_path: str, original_filename: str) -> dict:
+=======
+def _analyze_pe(temp_path: str, original_filename: str, file_size: int) -> dict:
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     result = {
         "is_pe": False,
         "machine_type": None,
@@ -215,9 +318,30 @@ def _analyze_pe(temp_path: str, original_filename: str) -> dict:
     }
 
     likely_pe = original_filename.lower().endswith((".exe", ".dll", ".sys", ".scr"))
+<<<<<<< HEAD
 
     try:
         pe = pefile.PE(temp_path, fast_load=False)
+=======
+    deep_parse_limit = settings.pe_deep_parse_max_size_mb * 1024 * 1024
+    if file_size > deep_parse_limit:
+        return {
+            **result,
+            "pe_indicators": [f"PE deep parse skipped: file size {file_size} bytes exceeds limit"],
+            "pe_score": 5 if likely_pe else 0,
+        }
+
+    try:
+        pe = pefile.PE(temp_path, fast_load=True)
+        if hasattr(pe, "parse_data_directories"):
+            pe.parse_data_directories(
+                directories=[
+                    pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"],
+                ]
+            )
+    except SoftTimeLimitExceeded:
+        raise
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     except Exception:
         return result if not likely_pe else {**result, "pe_indicators": ["file has PE-like extension but parse failed"], "pe_score": 25}
 
@@ -339,7 +463,11 @@ def _build_verdict_reason(score: int, risk_level: RiskLevel, indicators: list[st
     return f"{risk_level.value}: {top} (score={score})"
 
 
+<<<<<<< HEAD
 def _normalize_url(raw_url: str) -> tuple[str, str, bool]:
+=======
+def _normalize_url(raw_url: str) -> tuple[str, dict[str, str | int | bool | None]]:
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     candidate = raw_url.strip()
     parsed = urlparse(candidate)
     if parsed.scheme not in ("http", "https"):
@@ -350,7 +478,19 @@ def _normalize_url(raw_url: str) -> tuple[str, str, bool]:
         raise ValueError("invalid URL: hostname is required")
 
     normalized_url = parsed.geturl()
+<<<<<<< HEAD
     return normalized_url, parsed.hostname.lower(), parsed.scheme == "https"
+=======
+    path = parsed.path if parsed.path else "/"
+    return normalized_url, {
+        "scheme": parsed.scheme.lower(),
+        "hostname": parsed.hostname.lower(),
+        "path": path,
+        "query_present": bool(parsed.query),
+        "port": parsed.port,
+        "uses_https": parsed.scheme.lower() == "https",
+    }
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 
 
 def _resolve_domain(domain: str) -> str | None:
@@ -360,6 +500,7 @@ def _resolve_domain(domain: str) -> str | None:
         return None
 
 
+<<<<<<< HEAD
 def _estimate_url_risk(domain: str, uses_https: bool, resolved_ip: str | None) -> RiskLevel:
     score = 0
     if not uses_https:
@@ -378,3 +519,75 @@ def _estimate_url_risk(domain: str, uses_https: bool, resolved_ip: str | None) -
         score += 10
 
     return RiskLevel.SUSPICIOUS if score >= 20 else RiskLevel.SAFE
+=======
+def _estimate_url_risk(
+    normalized_url: str,
+    hostname: str,
+    uses_https: bool,
+    resolved_ip: str | None,
+    port: int | None,
+    query_present: bool,
+) -> dict[str, RiskLevel | int | list[str] | str]:
+    score = 0
+    indicators: list[str] = []
+
+    if not uses_https:
+        score += 20
+        indicators.append("URL не использует HTTPS")
+    else:
+        indicators.append("Сайт использует HTTPS")
+
+    try:
+        ipaddress.ip_address(hostname)
+        score += 20
+        indicators.append("Используется прямой IP вместо доменного имени")
+    except ValueError:
+        indicators.append("Используется доменное имя")
+
+    if "xn--" in hostname:
+        score += 15
+        indicators.append("Обнаружен punycode-домен (возможна имитация)")
+
+    if resolved_ip is None:
+        score += 10
+        indicators.append("DNS-имя не резолвится")
+    else:
+        indicators.append("Домен успешно резолвится в IP")
+
+    if query_present:
+        score += 5
+        indicators.append("URL содержит параметры запроса")
+    else:
+        indicators.append("URL не содержит параметров запроса")
+
+    if port and port not in {80, 443}:
+        score += 15
+        indicators.append(f"Обнаружен нестандартный порт: {port}")
+    else:
+        indicators.append("Подозрительный порт не обнаружен")
+
+    host_labels = hostname.split(".")
+    if len(hostname) > 60 or any(len(label) > 30 for label in host_labels):
+        score += 10
+        indicators.append("Домен выглядит необычно длинным")
+
+    if len(normalized_url) > 180:
+        score += 10
+        indicators.append("URL слишком длинный")
+
+    risk_level = RiskLevel.MALWARE_LIKE if score >= 60 else RiskLevel.SUSPICIOUS if score >= 25 else RiskLevel.SAFE
+
+    if risk_level == RiskLevel.SAFE:
+        verdict_reason = f"SAFE: явных опасных признаков не выявлено (score={score})"
+    elif risk_level == RiskLevel.SUSPICIOUS:
+        verdict_reason = f"SUSPICIOUS: обнаружены признаки, требующие проверки (score={score})"
+    else:
+        verdict_reason = f"MALWARE-LIKE: URL содержит несколько опасных признаков (score={score})"
+
+    return {
+        "risk_score": score,
+        "risk_level": risk_level,
+        "risk_indicators": indicators,
+        "verdict_reason": verdict_reason,
+    }
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5

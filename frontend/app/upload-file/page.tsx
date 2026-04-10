@@ -33,23 +33,55 @@ export default function UploadFilePage() {
   return (
     <div className="card">
       <h2>Upload File</h2>
+<<<<<<< HEAD
       <form onSubmit={onSubmit} className="row">
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+=======
+      <p className="muted">Загрузите файл для статического анализа и расчета risk score.</p>
+      <form onSubmit={onSubmit} className="row">
+        <input className="input-control" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
         <button disabled={!file || loading} type="submit">
           {loading ? 'Uploading...' : 'Upload & Analyze'}
         </button>
       </form>
 
+<<<<<<< HEAD
       {error && <p style={{ color: 'crimson' }}>{error}</p>}
 
       {result && (
         <div className="card" style={{ marginTop: 16 }}>
           <h3>Submission Created</h3>
+=======
+      {loading && <p className="state-text">Файл загружается, подождите…</p>}
+      {error && <p className="error-text">{error}</p>}
+
+      {result && (
+        <div className="card success-panel">
+          <h3>Submission Created</h3>
+          {result.deduplicated ? (
+            <p className="state-text">
+              {result.status === 'DONE'
+                ? 'Готовый результат найден: использован существующий отчет.'
+                : 'Файл уже известен системе: используется существующий артефакт, отчет обновляется в очереди.'}
+            </p>
+          ) : (
+            <p className="muted">Новый файл принят в обработку.</p>
+          )}
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
           <p><b>submission_id:</b> {result.submission_id}</p>
           <p><b>status:</b> {result.status}</p>
           <p><b>source_type:</b> FILE</p>
           <p><b>deduplicated:</b> {String(result.deduplicated)}</p>
+<<<<<<< HEAD
           <div className="row">
+=======
+          {result.reused_from_submission_id && (
+            <p><b>reused_from_submission_id:</b> {result.reused_from_submission_id}</p>
+          )}
+          <p><b>task_id:</b> {result.task_id}</p>
+          <div className="row action-row">
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
             <Link href={`/submission/${result.submission_id}`}>Open Submission</Link>
             <Link href={`/report/${result.submission_id}`}>Open Report</Link>
           </div>

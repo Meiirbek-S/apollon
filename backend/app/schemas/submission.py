@@ -72,9 +72,27 @@ class UrlAnalysisRead(BaseModel):
     submission_id: int
     normalized_url: str
     domain: str
+<<<<<<< HEAD
     resolved_ip: str | None
     uses_https: bool
     risk_level: RiskLevel
+=======
+    scheme: str
+    hostname: str
+    path: str
+    query_present: bool
+    port: int | None
+    resolved_ip: str | None
+    dns_resolved: bool
+    uses_https: bool
+    final_url: str | None
+    redirect_count: int
+    risk_score: int
+    risk_level: RiskLevel
+    risk_indicators: list[str]
+    verdict_reason: str
+    analyzed_at: datetime
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     created_at: datetime
 
     model_config = {"from_attributes": True}

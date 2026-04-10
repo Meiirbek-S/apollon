@@ -2,6 +2,10 @@ import hashlib
 import os
 import tempfile
 from typing import Any
+<<<<<<< HEAD
+=======
+from urllib.parse import urlparse
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
@@ -49,6 +53,13 @@ def create_file_submission(payload: FileSubmissionCreate, db: Session = Depends(
 @router.post("/url", response_model=SubmissionCreateResponse, status_code=201)
 def create_url_submission(payload: UrlSubmissionCreate, db: Session = Depends(get_db)) -> SubmissionCreateResponse:
     normalized = payload.url.strip()
+<<<<<<< HEAD
+=======
+    parsed = urlparse(normalized if "://" in normalized else f"http://{normalized}")
+    if not parsed.hostname:
+        raise HTTPException(status_code=422, detail="invalid URL: hostname is required")
+
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     submission = Submission(
         source_type=SubmissionType.URL,
         filename=normalized,
@@ -105,6 +116,7 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
         .limit(1)
     ).scalar_one_or_none()
 
+<<<<<<< HEAD
     dedup_source = source_with_report or latest_artifact
 
     if dedup_source:
@@ -118,19 +130,39 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
 
         status = SubmissionStatus.DONE if has_ready_report else SubmissionStatus.QUEUED
 
+=======
+    source_report = None
+    has_ready_report = False
+    if source_with_report is not None:
+        source_report = db.query(StaticAnalysisResult).filter_by(submission_id=source_with_report.id).one_or_none()
+        has_ready_report = bool(source_report and _is_static_report_complete(source_report))
+
+    # CASE 1: есть готовый повторно используемый отчет -> deduplicated=true и DONE без нового анализа
+    if source_with_report is not None and has_ready_report:
+        os.unlink(temp_path)
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
         submission = Submission(
             source_type=SubmissionType.FILE,
             filename=file.filename,
             sha256=file_hash,
+<<<<<<< HEAD
             content_type=dedup_source.content_type,
             size_bytes=dedup_source.size_bytes,
             storage_key=dedup_source.storage_key,
             reused_from_submission_id=dedup_source.id,
             status=status,
+=======
+            content_type=source_with_report.content_type,
+            size_bytes=source_with_report.size_bytes,
+            storage_key=source_with_report.storage_key,
+            reused_from_submission_id=source_with_report.id,
+            status=SubmissionStatus.DONE,
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
         )
         db.add(submission)
         db.commit()
         db.refresh(submission)
+<<<<<<< HEAD
 
         if has_ready_report:
             return SubmissionCreateResponse(
@@ -140,14 +172,45 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
                 deduplicated=True,
                 reused_from_submission_id=dedup_source.id,
             )
+=======
+        return SubmissionCreateResponse(
+            submission_id=submission.id,
+            status=submission.status,
+            task_id="reused-existing-report",
+            deduplicated=True,
+            reused_from_submission_id=source_with_report.id,
+        )
+
+    # CASE 2: готового отчета нет -> НЕ считаем это dedup-готовым результатом.
+    # Можно переиспользовать уже загруженный артефакт, но анализ запускается заново.
+    if latest_artifact and latest_artifact.storage_key:
+        os.unlink(temp_path)
+        submission = Submission(
+            source_type=SubmissionType.FILE,
+            filename=file.filename,
+            sha256=file_hash,
+            content_type=latest_artifact.content_type,
+            size_bytes=latest_artifact.size_bytes,
+            storage_key=latest_artifact.storage_key,
+            status=SubmissionStatus.QUEUED,
+        )
+        db.add(submission)
+        db.commit()
+        db.refresh(submission)
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
 
         task = process_file_submission.delay(submission.id)
         return SubmissionCreateResponse(
             submission_id=submission.id,
             status=submission.status,
             task_id=task.id,
+<<<<<<< HEAD
             deduplicated=True,
             reused_from_submission_id=dedup_source.id,
+=======
+            deduplicated=False,
+            reused_from_submission_id=None,
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
         )
 
     client = get_minio_client()
@@ -210,6 +273,13 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)) -> Submiss
 
 
 def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRead | None:
+<<<<<<< HEAD
+=======
+    submission = db.get(Submission, submission_id)
+    if not submission:
+        return None
+
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     result = db.query(StaticAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
     if result:
         return StaticAnalysisRead.model_validate(result)
@@ -228,6 +298,21 @@ def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRea
         if reused_result:
             return StaticAnalysisRead.model_validate(reused_result)
 
+<<<<<<< HEAD
+=======
+    # fallback для старых/несвязанных дедуп-цепочек: ищем готовый отчет по тому же sha256
+    if submission.sha256:
+        same_hash_result = (
+            db.query(StaticAnalysisResult)
+            .join(Submission, Submission.id == StaticAnalysisResult.submission_id)
+            .filter(Submission.sha256 == submission.sha256)
+            .order_by(StaticAnalysisResult.created_at.desc())
+            .first()
+        )
+        if same_hash_result:
+            return StaticAnalysisRead.model_validate(same_hash_result)
+
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
     return None
 
 
@@ -240,6 +325,13 @@ def get_report(submission_id: int, db: Session = Depends(get_db)) -> dict[str, A
     if submission.source_type == SubmissionType.FILE:
         static_report = _resolve_static_report(submission_id, db)
         if not static_report:
+<<<<<<< HEAD
+=======
+            if submission.status in {SubmissionStatus.QUEUED, SubmissionStatus.PROCESSING}:
+                raise HTTPException(status_code=404, detail="static analysis report not ready yet")
+            if submission.status == SubmissionStatus.FAILED:
+                raise HTTPException(status_code=404, detail="static analysis failed or report unavailable")
+>>>>>>> codex/design-web-system-for-malware-analysis-5z4ma5
             raise HTTPException(status_code=404, detail="static analysis report not found")
 
         payload = static_report.model_dump()
