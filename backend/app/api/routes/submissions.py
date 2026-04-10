@@ -2,6 +2,7 @@ import hashlib
 import os
 import tempfile
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
@@ -49,6 +50,10 @@ def create_file_submission(payload: FileSubmissionCreate, db: Session = Depends(
 @router.post("/url", response_model=SubmissionCreateResponse, status_code=201)
 def create_url_submission(payload: UrlSubmissionCreate, db: Session = Depends(get_db)) -> SubmissionCreateResponse:
     normalized = payload.url.strip()
+    parsed = urlparse(normalized if "://" in normalized else f"http://{normalized}")
+    if not parsed.hostname:
+        raise HTTPException(status_code=422, detail="invalid URL: hostname is required")
+
     submission = Submission(
         source_type=SubmissionType.URL,
         filename=normalized,
