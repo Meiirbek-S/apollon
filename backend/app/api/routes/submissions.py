@@ -348,21 +348,52 @@ def get_dynamic_report(submission_id: int, db: Session = Depends(get_db)) -> dic
         raise HTTPException(status_code=404, detail="submission not found")
 
     result = db.query(DynamicAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
+
+    if not submission.dynamic_requested:
+        return {
+            "submission_id": submission_id,
+            "dynamic_requested": False,
+            "dynamic_status": submission.dynamic_status,
+            "message": "dynamic analysis was not requested",
+            "report": None,
+        }
+
     if not result:
+        if submission.dynamic_status in {DynamicAnalysisStatus.QUEUED, DynamicAnalysisStatus.RUNNING}:
+            return {
+                "submission_id": submission_id,
+                "dynamic_requested": True,
+                "dynamic_status": submission.dynamic_status,
+                "message": "dynamic analysis is in progress",
+                "report": None,
+            }
+        if submission.dynamic_status == DynamicAnalysisStatus.FAILED:
+            return {
+                "submission_id": submission_id,
+                "dynamic_requested": True,
+                "dynamic_status": submission.dynamic_status,
+                "message": "dynamic analysis failed",
+                "report": None,
+            }
         raise HTTPException(status_code=404, detail="dynamic analysis report not found")
 
     return {
         "submission_id": submission_id,
-        "provider": result.provider,
-        "sandbox_id": result.sandbox_id,
-        "risk_score": result.risk_score,
-        "risk_level": result.risk_level,
-        "suspicious_actions": result.suspicious_actions,
-        "network_connections": result.network_connections,
-        "file_changes": result.file_changes,
-        "registry_changes": result.registry_changes,
-        "verdict_reason": result.verdict_reason,
-        "raw_report": result.raw_report,
-        "analyzed_at": result.analyzed_at,
-        "created_at": result.created_at,
+        "dynamic_requested": True,
+        "dynamic_status": submission.dynamic_status,
+        "message": "dynamic analysis completed",
+        "report": {
+            "provider": result.provider,
+            "sandbox_id": result.sandbox_id,
+            "risk_score": result.risk_score,
+            "risk_level": result.risk_level,
+            "suspicious_actions": result.suspicious_actions,
+            "network_connections": result.network_connections,
+            "file_changes": result.file_changes,
+            "registry_changes": result.registry_changes,
+            "verdict_reason": result.verdict_reason,
+            "raw_report": result.raw_report,
+            "analyzed_at": result.analyzed_at,
+            "created_at": result.created_at,
+        },
     }

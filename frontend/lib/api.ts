@@ -49,12 +49,15 @@ export type Submission = {
 }
 
 export async function createFileSubmission(formData: FormData, dynamicRequested = false) {
+  const payload = new FormData()
+  for (const [key, value] of formData.entries()) {
+    payload.append(key, value)
+  }
+  payload.append('dynamic_requested', dynamicRequested ? 'true' : 'false')
+
   const res = await fetch(`${API_BASE}/api/v1/submissions/file/upload`, {
     method: 'POST',
-    body: (() => {
-      formData.set('dynamic_requested', String(dynamicRequested))
-      return formData
-    })()
+    body: payload
   })
   if (!res.ok) throw await toApiError(res)
   return res.json()

@@ -54,7 +54,7 @@ npm run dev
 cd /workspace/apollon
 docker compose -f infra/docker-compose.yml down
 
-## Dynamic analysis (без VirtualBox)
+## Dynamic analysis (container/external providers)
 - Изоляция выполняется через Docker sandbox (`--network none`, `--read-only`, resource limits).
 - Поддержан альтернативный провайдер через внешний API (`dynamic_analysis_provider=external`).
 - Для файла можно запросить dynamic анализ через `dynamic_requested=true` в `POST /api/v1/submissions/file/upload`.

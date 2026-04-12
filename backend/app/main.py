@@ -6,11 +6,9 @@ from app.core.config import settings
 
 app = FastAPI(title=settings.app_name)
 
-cors_origins = getattr(
-    settings,
-    "cors_origins",
-    ["http://localhost:3000", "http://127.0.0.1:3000"],
-)
+_default_origins = {"http://localhost:3000", "http://127.0.0.1:3000"}
+configured_origins = set(getattr(settings, "cors_origins", []) or [])
+cors_origins = sorted(_default_origins | configured_origins)
 
 app.add_middleware(
     CORSMiddleware,

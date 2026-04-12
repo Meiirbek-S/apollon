@@ -1,4 +1,4 @@
-from pydantic import computed_field
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,16 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            v = value.strip()
+            if v.startswith("["):
+                return value
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return value
 
     @computed_field
     @property

@@ -177,6 +177,10 @@ export function FileReportView({
               )}
             </div>
           </>
+        ) : dynamicStatus === 'RUNNING' || dynamicStatus === 'QUEUED' ? (
+          <p className="muted">Динамический анализ выполняется. Обновите страницу чуть позже.</p>
+        ) : dynamicStatus === 'FAILED' ? (
+          <p className="muted">Не удалось выполнить динамический анализ для этого файла.</p>
         ) : (
           <p className="muted">Динамический отчет пока недоступен или не был запрошен.</p>
         )}
