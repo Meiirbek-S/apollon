@@ -47,12 +47,30 @@ export type Submission = {
 }
 
 export async function createFileSubmission(formData: FormData) {
-  const res = await fetch(`${API_BASE}/api/v1/submissions/file/upload`, {
-    method: 'POST',
-    body: formData
-  })
-  if (!res.ok) throw await toApiError(res)
-  return res.json()
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/submissions/file/upload`, {
+      method: 'POST',
+      body: formData
+    })
+    if (!res.ok) throw await toApiError(res)
+    return res.json()
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error
+    }
+
+    const isNetworkError = error instanceof TypeError
+    if (isNetworkError) {
+      throw new ApiError(
+        'Network error: backend is unreachable or blocked by CORS',
+        0,
+        'Не удалось подключиться к API. Проверьте NEXT_PUBLIC_API_BASE, CORS и доступность backend.',
+        String(error)
+      )
+    }
+
+    throw new ApiError('Unexpected upload error', 0, String(error), error)
+  }
 }
 
 export async function createUrlSubmission(url: string) {

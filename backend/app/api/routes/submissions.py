@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import tempfile
 from typing import Any
@@ -7,6 +8,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import ProgrammingError, SQLAlchemyError
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -25,6 +27,7 @@ from app.services.object_storage import ensure_bucket_exists, get_minio_client, 
 from app.tasks.submission_tasks import process_file_submission, process_url_submission
 
 router = APIRouter(prefix="/api/v1/submissions", tags=["submissions"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/file", response_model=SubmissionCreateResponse, status_code=201)
@@ -77,80 +80,115 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
     max_size = settings.max_upload_size_mb * 1024 * 1024
     total_size = 0
     digest = hashlib.sha256()
+    temp_path: str | None = None
 
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        temp_path = tmp.name
-        while True:
-            chunk = file.file.read(1024 * 1024)
-            if not chunk:
-                break
-            total_size += len(chunk)
-            if total_size > max_size:
-                os.unlink(temp_path)
-                raise HTTPException(status_code=413, detail=f"file too large, limit is {settings.max_upload_size_mb} MB")
-            digest.update(chunk)
-            tmp.write(chunk)
+    try:
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            temp_path = tmp.name
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > max_size:
+                    raise HTTPException(status_code=413, detail=f"file too large, limit is {settings.max_upload_size_mb} MB")
+                digest.update(chunk)
+                tmp.write(chunk)
 
-    file_hash = digest.hexdigest()
+        file_hash = digest.hexdigest()
 
-    source_with_report = db.execute(
-        select(Submission)
-        .join(StaticAnalysisResult, StaticAnalysisResult.submission_id == Submission.id)
-        .where(Submission.sha256 == file_hash)
-        .where(Submission.storage_key.is_not(None))
-        .order_by(Submission.id.desc())
-        .limit(1)
-    ).scalar_one_or_none()
+        source_with_report = db.execute(
+            select(Submission)
+            .join(StaticAnalysisResult, StaticAnalysisResult.submission_id == Submission.id)
+            .where(Submission.sha256 == file_hash)
+            .where(Submission.storage_key.is_not(None))
+            .order_by(Submission.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
 
-    latest_artifact = db.execute(
-        select(Submission)
-        .where(Submission.sha256 == file_hash)
-        .where(Submission.storage_key.is_not(None))
-        .order_by(Submission.id.desc())
-        .limit(1)
-    ).scalar_one_or_none()
+        latest_artifact = db.execute(
+            select(Submission)
+            .where(Submission.sha256 == file_hash)
+            .where(Submission.storage_key.is_not(None))
+            .order_by(Submission.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
 
-    source_report = None
-    has_ready_report = False
-    if source_with_report is not None:
-        source_report = db.query(StaticAnalysisResult).filter_by(submission_id=source_with_report.id).one_or_none()
-        has_ready_report = bool(source_report and _is_static_report_complete(source_report))
+        has_ready_report = False
+        if source_with_report is not None:
+            # Проверяем только наличие отчета по submission_id, не загружая ORM-модель целиком.
+            # Это делает upload устойчивым к частично обновленным схемам БД.
+            report_submission_id = db.execute(
+                select(StaticAnalysisResult.submission_id)
+                .where(StaticAnalysisResult.submission_id == source_with_report.id)
+                .limit(1)
+            ).scalar_one_or_none()
+            has_ready_report = report_submission_id is not None
 
-    # CASE 1: есть готовый повторно используемый отчет -> deduplicated=true и DONE без нового анализа
-    if source_with_report is not None and has_ready_report:
-        os.unlink(temp_path)
+        # CASE 1: есть готовый повторно используемый отчет -> deduplicated=true и DONE без нового анализа
+        if source_with_report is not None and has_ready_report:
+            submission = Submission(
+                source_type=SubmissionType.FILE,
+                filename=file.filename,
+                sha256=file_hash,
+                content_type=source_with_report.content_type,
+                size_bytes=source_with_report.size_bytes,
+                storage_key=source_with_report.storage_key,
+                reused_from_submission_id=source_with_report.id,
+                status=SubmissionStatus.DONE,
+            )
+            db.add(submission)
+            db.commit()
+            db.refresh(submission)
+            return SubmissionCreateResponse(
+                submission_id=submission.id,
+                status=submission.status,
+                task_id="reused-existing-report",
+                deduplicated=True,
+                reused_from_submission_id=source_with_report.id,
+            )
+
+        # CASE 2: готового отчета нет -> НЕ считаем это dedup-готовым результатом.
+        # Можно переиспользовать уже загруженный артефакт, но анализ запускается заново.
+        if latest_artifact and latest_artifact.storage_key:
+            submission = Submission(
+                source_type=SubmissionType.FILE,
+                filename=file.filename,
+                sha256=file_hash,
+                content_type=latest_artifact.content_type,
+                size_bytes=latest_artifact.size_bytes,
+                storage_key=latest_artifact.storage_key,
+                status=SubmissionStatus.QUEUED,
+            )
+            db.add(submission)
+            db.commit()
+            db.refresh(submission)
+
+            task = process_file_submission.delay(submission.id)
+            return SubmissionCreateResponse(
+                submission_id=submission.id,
+                status=submission.status,
+                task_id=task.id,
+                deduplicated=False,
+                reused_from_submission_id=None,
+            )
+
+        client = get_minio_client()
+        ensure_bucket_exists(client)
+
+        ext = os.path.splitext(file.filename)[1]
+        object_name = f"samples/{file_hash}{ext}"
+        content_type = file.content_type or "application/octet-stream"
+
+        upload_file(client, object_name=object_name, file_path=temp_path, content_type=content_type)
+
         submission = Submission(
             source_type=SubmissionType.FILE,
             filename=file.filename,
             sha256=file_hash,
-            content_type=source_with_report.content_type,
-            size_bytes=source_with_report.size_bytes,
-            storage_key=source_with_report.storage_key,
-            reused_from_submission_id=source_with_report.id,
-            status=SubmissionStatus.DONE,
-        )
-        db.add(submission)
-        db.commit()
-        db.refresh(submission)
-        return SubmissionCreateResponse(
-            submission_id=submission.id,
-            status=submission.status,
-            task_id="reused-existing-report",
-            deduplicated=True,
-            reused_from_submission_id=source_with_report.id,
-        )
-
-    # CASE 2: готового отчета нет -> НЕ считаем это dedup-готовым результатом.
-    # Можно переиспользовать уже загруженный артефакт, но анализ запускается заново.
-    if latest_artifact and latest_artifact.storage_key:
-        os.unlink(temp_path)
-        submission = Submission(
-            source_type=SubmissionType.FILE,
-            filename=file.filename,
-            sha256=file_hash,
-            content_type=latest_artifact.content_type,
-            size_bytes=latest_artifact.size_bytes,
-            storage_key=latest_artifact.storage_key,
+            content_type=content_type,
+            size_bytes=total_size,
+            storage_key=object_name,
             status=SubmissionStatus.QUEUED,
         )
         db.add(submission)
@@ -158,65 +196,35 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
         db.refresh(submission)
 
         task = process_file_submission.delay(submission.id)
+
         return SubmissionCreateResponse(
             submission_id=submission.id,
             status=submission.status,
             task_id=task.id,
             deduplicated=False,
-            reused_from_submission_id=None,
         )
-
-    client = get_minio_client()
-    ensure_bucket_exists(client)
-
-    ext = os.path.splitext(file.filename)[1]
-    object_name = f"samples/{file_hash}{ext}"
-    content_type = file.content_type or "application/octet-stream"
-
-    upload_file(client, object_name=object_name, file_path=temp_path, content_type=content_type)
-    os.unlink(temp_path)
-
-    submission = Submission(
-        source_type=SubmissionType.FILE,
-        filename=file.filename,
-        sha256=file_hash,
-        content_type=content_type,
-        size_bytes=total_size,
-        storage_key=object_name,
-        status=SubmissionStatus.QUEUED,
-    )
-    db.add(submission)
-    db.commit()
-    db.refresh(submission)
-
-    task = process_file_submission.delay(submission.id)
-
-    return SubmissionCreateResponse(
-        submission_id=submission.id,
-        status=submission.status,
-        task_id=task.id,
-        deduplicated=False,
-    )
-
-
-
-
-def _is_static_report_complete(report: StaticAnalysisResult) -> bool:
-    # базовые поля должны быть заполнены
-    if not (report.original_filename and report.verdict_reason):
-        return False
-
-    # после scoring v2, если есть suspicious imports,
-    # ожидаем детальные индикаторы вида "suspicious import: ... (+N)".
-    if report.suspicious_imports:
-        has_weighted_import_indicator = any(
-            indicator.startswith("suspicious import:") for indicator in (report.risk_indicators or [])
-        )
-        if not has_weighted_import_indicator:
-            return False
-
-    return True
-
+    except HTTPException:
+        db.rollback()
+        raise
+    except ProgrammingError as exc:
+        db.rollback()
+        logger.exception("upload_file_submission failed due to DB schema mismatch")
+        raise HTTPException(status_code=500, detail="database schema is outdated, run: alembic upgrade head") from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("upload_file_submission database error")
+        raise HTTPException(status_code=500, detail="database error while creating submission") from exc
+    except Exception as exc:
+        db.rollback()
+        logger.exception("upload_file_submission unexpected error")
+        raise HTTPException(status_code=500, detail=f"file upload failed: {exc}") from exc
+    finally:
+        try:
+            file.file.close()
+        except Exception:
+            pass
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
 @router.get("/{submission_id}", response_model=SubmissionRead)
 def get_submission(submission_id: int, db: Session = Depends(get_db)) -> SubmissionRead:
     submission = db.get(Submission, submission_id)

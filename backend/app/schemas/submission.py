@@ -62,6 +62,9 @@ class StaticAnalysisRead(BaseModel):
     pe_sections: list[dict[str, Any]]
     imported_functions: list[str]
     suspicious_imports: list[str]
+    yara_matches: list[dict[str, Any]]
+    yara_rule_count: int
+    yara_error: str | None
 
     created_at: datetime
 

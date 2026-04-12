@@ -1,6 +1,6 @@
-# Шаг 6: Enhanced static file analysis (MVP v2 scoring)
+# Шаг 6: Enhanced static file analysis (MVP v2 scoring + YARA)
 
-На этом шаге усиливаем file static-report без VirtualBox и без YARA.
+На этом шаге усиливаем file static-report без VirtualBox, но с YARA-сигнатурами.
 
 ## Что добавлено в report
 
@@ -29,11 +29,17 @@
 - imported_functions[]
 - suspicious_imports[]
 
+Для YARA дополнительно:
+- yara_matches[]
+- yara_rule_count
+- yara_error
+
 ---
 
 ## Scoring model v2 (прозрачная)
 
 Базовые факторы:
+- YARA match: +40 (+5 за каждое дополнительное совпадение, максимум +60)
 - extension mismatch: +10
 - high entropy section (>7.2): +10 за секцию
 - RWX section: +15 за секцию (индикатор: "RWX section detected")
@@ -59,6 +65,14 @@ Suspicious imports (взвешенно):
 - 0–24 => SAFE
 - 25–59 => SUSPICIOUS
 - 60+ => MALWARE-LIKE
+
+## YARA правила
+
+- Файл правил по умолчанию: `backend/app/yara_rules/base_rules.yar`
+- Включение/настройка через env:
+  - `YARA_ENABLED=true|false`
+  - `YARA_RULES_PATH=app/yara_rules/base_rules.yar`
+  - `YARA_MATCH_TIMEOUT_SEC=10`
 
 ---
 

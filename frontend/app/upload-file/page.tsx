@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { createFileSubmission } from '@/lib/api'
+import { createFileSubmission, isApiError } from '@/lib/api'
 
 export default function UploadFilePage() {
   const [file, setFile] = useState<File | null>(null)
@@ -23,8 +23,13 @@ export default function UploadFilePage() {
       formData.append('file', file)
       const data = await createFileSubmission(formData)
       setResult(data)
-    } catch (err: any) {
-      setError(err.message || 'Upload failed')
+    } catch (err: unknown) {
+      if (isApiError(err)) {
+        const message = err.detail || err.message
+        setError(message || 'Upload failed')
+      } else {
+        setError('Upload failed')
+      }
     } finally {
       setLoading(false)
     }

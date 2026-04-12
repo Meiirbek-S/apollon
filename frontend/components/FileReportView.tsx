@@ -12,6 +12,14 @@ type FileReport = {
   verdict_reason?: string | null
   risk_indicators?: string[] | null
   suspicious_imports?: string[] | null
+  yara_rule_count?: number | null
+  yara_error?: string | null
+  yara_matches?: Array<{
+    rule?: string
+    namespace?: string
+    tags?: string[]
+    meta?: Record<string, string>
+  }> | null
   imported_functions?: string[] | null
   pe_sections?: unknown[] | null
   is_pe?: boolean | null
@@ -66,7 +74,8 @@ function humanizeIndicator(indicator: string): string {
 }
 
 function getTopReasons(report: FileReport): string[] {
-  const raw = [...(report.risk_indicators || []), ...(report.suspicious_imports || [])]
+  const yaraRules = (report.yara_matches || []).map((m) => `yara match: ${m.rule || 'unknown rule'}`)
+  const raw = [...(report.risk_indicators || []), ...(report.suspicious_imports || []), ...yaraRules]
   const mapped = raw.map(humanizeIndicator)
   const unique = Array.from(new Set(mapped))
   return unique.slice(0, 6)
@@ -98,6 +107,7 @@ export function FileReportView({ report }: { report: FileReport }) {
         <div className="overview-card"><span>Хэш</span><strong>{shortenHash(report.sha256)}</strong></div>
         <div className="overview-card"><span>PE-формат</span><strong>{report.is_pe ? 'Да' : 'Нет'}</strong></div>
         <div className="overview-card"><span>Дата компиляции</span><strong>{report.compile_timestamp || '-'}</strong></div>
+        <div className="overview-card"><span>YARA-совпадения</span><strong>{report.yara_rule_count ?? 0}</strong></div>
       </div>
 
       <div className="card soft">
@@ -126,6 +136,24 @@ export function FileReportView({ report }: { report: FileReport }) {
             <span className="muted">Явные признаки риска не обнаружены.</span>
           )}
         </div>
+      </div>
+
+      <div className="card soft">
+        <h3>YARA сигнатуры</h3>
+        {report.yara_error ? (
+          <p className="muted">Ошибка сканирования YARA: {report.yara_error}</p>
+        ) : (report.yara_matches || []).length > 0 ? (
+          <ul className="plain-list">
+            {report.yara_matches?.map((item, idx) => (
+              <li key={`${item.rule || 'rule'}-${idx}`}>
+                <b>{item.rule || 'unknown rule'}</b>
+                {item.meta?.description ? ` — ${item.meta.description}` : ''}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">YARA-сигнатуры не сработали.</p>
+        )}
       </div>
 
       {report.is_pe && (
@@ -164,6 +192,8 @@ export function FileReportView({ report }: { report: FileReport }) {
         <JsonBlock data={report.imported_functions || []} />
         <h4>PE-секции (PE sections)</h4>
         <JsonBlock data={report.pe_sections || []} />
+        <h4>YARA-совпадения (YARA matches)</h4>
+        <JsonBlock data={report.yara_matches || []} />
       </details>
 
       <details className="card soft">
