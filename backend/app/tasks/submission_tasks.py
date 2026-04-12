@@ -4,6 +4,7 @@ import logging
 import os
 import socket
 import tempfile
+from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -11,6 +12,11 @@ from urllib.parse import urlparse
 import filetype
 import pefile
 from celery.exceptions import SoftTimeLimitExceeded
+
+try:
+    import yara
+except ImportError:  # pragma: no cover
+    yara = None
 
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -220,11 +226,16 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
         score += 10
 
     pe_info = _analyze_pe(temp_path, original_filename, file_size)
+    yara_info = _scan_with_yara(temp_path)
 
     if pe_info["pe_score"]:
         score += pe_info["pe_score"]
     if pe_info["pe_indicators"]:
         indicators.extend(pe_info["pe_indicators"])
+    if yara_info["yara_score"]:
+        score += yara_info["yara_score"]
+    if yara_info["yara_indicators"]:
+        indicators.extend(yara_info["yara_indicators"])
 
     risk_level = _score_to_level(score)
     verdict_reason = _build_verdict_reason(score, risk_level, indicators)
@@ -249,7 +260,76 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
         "pe_sections": pe_info["sections"],
         "imported_functions": pe_info["imported_functions"],
         "suspicious_imports": pe_info["suspicious_imports"],
+        "yara_matches": yara_info["yara_matches"],
+        "yara_rule_count": yara_info["yara_rule_count"],
+        "yara_error": yara_info["yara_error"],
     }
+
+
+def _resolve_yara_rules_path() -> Path:
+    configured = Path(settings.yara_rules_path)
+    if configured.is_absolute():
+        return configured
+    if configured.exists():
+        return configured
+
+    backend_root = Path(__file__).resolve().parents[2]
+    return backend_root / configured
+
+
+@lru_cache(maxsize=1)
+def _load_yara_rules():
+    if yara is None:
+        raise RuntimeError("yara-python is not installed")
+
+    rules_path = _resolve_yara_rules_path()
+    if not rules_path.exists():
+        raise FileNotFoundError(f"YARA rules file not found: {rules_path}")
+    return yara.compile(filepath=str(rules_path))
+
+
+def _scan_with_yara(temp_path: str) -> dict:
+    result = {
+        "yara_matches": [],
+        "yara_rule_count": 0,
+        "yara_error": None,
+        "yara_score": 0,
+        "yara_indicators": [],
+    }
+
+    if not settings.yara_enabled:
+        return result
+
+    try:
+        compiled_rules = _load_yara_rules()
+        matches = compiled_rules.match(filepath=temp_path, timeout=settings.yara_match_timeout_sec)
+    except SoftTimeLimitExceeded:
+        raise
+    except Exception as exc:
+        logger.warning("yara scan failed", extra={"error": str(exc)})
+        result["yara_error"] = str(exc)
+        return result
+
+    yara_matches: list[dict] = []
+    for match in matches:
+        yara_matches.append(
+            {
+                "rule": match.rule,
+                "namespace": match.namespace,
+                "tags": sorted(match.tags),
+                "meta": {k: str(v) for k, v in dict(match.meta).items()},
+            }
+        )
+
+    if yara_matches:
+        count = len(yara_matches)
+        yara_bonus = min(60, 40 + max(0, count - 1) * 5)
+        result["yara_score"] = yara_bonus
+        result["yara_indicators"] = [f"yara match: {item['rule']}" for item in yara_matches]
+
+    result["yara_matches"] = yara_matches
+    result["yara_rule_count"] = len(yara_matches)
+    return result
 
 
 def _analyze_pe(temp_path: str, original_filename: str, file_size: int) -> dict:
@@ -397,6 +477,8 @@ def _build_verdict_reason(score: int, risk_level: RiskLevel, indicators: list[st
         categories.append("abnormal section names")
     if any("extension mismatch" in i for i in indicators):
         categories.append("extension mismatch")
+    if any("yara match:" in i for i in indicators):
+        categories.append("YARA signature")
 
     if categories:
         summary = " + ".join(categories[:3])
