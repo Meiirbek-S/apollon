@@ -62,3 +62,20 @@ curl -s http://localhost:8000/api/v1/submissions/<submission_id>/report
 - Добавляйте новые `.yar/.yara` файлы в `backend/yara_rules/`.
 - Перезапускайте API/worker после обновления правил.
 - Для production рекомендуется хранить правила в отдельном репозитории и подписывать релизы правил.
+
+## Troubleshooting (500 при /report после внедрения YARA)
+Если видите 500/503 и в деталях фигурируют `yara_matched`, `yara_match_count` или `yara_rule_names`, почти всегда причина — миграция не применена в БД.
+
+Проверка:
+```bash
+docker compose -f infra/docker-compose.yml logs api --tail=200
+docker compose -f infra/docker-compose.yml logs worker --tail=200
+docker compose -f infra/docker-compose.yml exec api alembic current
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
+docker compose -f infra/docker-compose.yml exec postgres psql -U apollon -d apollon -c "\\d+ static_analysis_results"
+```
+
+В таблице `static_analysis_results` должны присутствовать поля:
+- `yara_matched`
+- `yara_match_count`
+- `yara_rule_names`

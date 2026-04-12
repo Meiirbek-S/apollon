@@ -14,6 +14,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
   let reportResponse: ReportResponse | null = null
   let pendingReason: string | null = null
   let unavailableReason: string | null = null
+  let backendError: string | null = null
 
   try {
     reportResponse = await getReport(id)
@@ -48,7 +49,11 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
         unavailableReason = 'Статический отчет для этого submission пока не найден.'
       }
     } else {
-      throw error
+      if (isApiError(error)) {
+        backendError = error.detail || `Backend error (${error.status})`
+      } else {
+        backendError = 'Не удалось загрузить отчет из backend.'
+      }
     }
   }
 
@@ -98,6 +103,14 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
           <h3>Отчет недоступен</h3>
           <p>{unavailableReason}</p>
           <p className="muted">submission status: {submission.status}</p>
+        </div>
+      )}
+
+      {!reportResponse && backendError && (
+        <div className="card empty-state">
+          <h3>Ошибка backend</h3>
+          <p>{backendError}</p>
+          <p className="muted">Проверьте логи API/worker и состояние миграций БД.</p>
         </div>
       )}
 

@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -25,6 +26,13 @@ from app.services.object_storage import ensure_bucket_exists, get_minio_client, 
 from app.tasks.submission_tasks import process_file_submission, process_url_submission
 
 router = APIRouter(prefix="/api/v1/submissions", tags=["submissions"])
+
+YARA_DB_COLUMNS = ("yara_matched", "yara_match_count", "yara_rule_names")
+
+
+def _looks_like_missing_yara_migration(error: Exception) -> bool:
+    text = str(error).lower()
+    return "undefinedcolumn" in text and any(column in text for column in YARA_DB_COLUMNS)
 
 
 @router.post("/file", response_model=SubmissionCreateResponse, status_code=201)
@@ -270,7 +278,19 @@ def get_report(submission_id: int, db: Session = Depends(get_db)) -> dict[str, A
         raise HTTPException(status_code=404, detail="submission not found")
 
     if submission.source_type == SubmissionType.FILE:
-        static_report = _resolve_static_report(submission_id, db)
+        try:
+            static_report = _resolve_static_report(submission_id, db)
+        except ProgrammingError as exc:
+            db.rollback()
+            if _looks_like_missing_yara_migration(exc):
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "database schema is out of date for YARA fields. "
+                        "Run alembic upgrade head and restart api/worker."
+                    ),
+                ) from exc
+            raise
         if not static_report:
             if submission.status in {SubmissionStatus.QUEUED, SubmissionStatus.PROCESSING}:
                 raise HTTPException(status_code=404, detail="static analysis report not ready yet")

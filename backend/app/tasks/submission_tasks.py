@@ -12,6 +12,7 @@ import filetype
 import pefile
 import yara
 from celery.exceptions import SoftTimeLimitExceeded
+from sqlalchemy.exc import ProgrammingError
 
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -42,6 +43,12 @@ SUSPICIOUS_IMPORT_WEIGHTS = {
 
 ABNORMAL_SECTION_NAMES = {".asdf", ".boom", ".x", "upx0", "upx1", "upx2", ".upx"}
 logger = logging.getLogger(__name__)
+YARA_DB_COLUMNS = ("yara_matched", "yara_match_count", "yara_rule_names")
+
+
+def _looks_like_missing_yara_migration(error: Exception) -> bool:
+    text = str(error).lower()
+    return "undefinedcolumn" in text and any(column in text for column in YARA_DB_COLUMNS)
 
 def _process_file_submission_impl(submission_id: int) -> dict[str, int | str]:
     db = SessionLocal()
@@ -84,11 +91,16 @@ def _process_file_submission_impl(submission_id: int) -> dict[str, int | str]:
             "risk": static_data["risk_level"].value,
             "risk_score": static_data["risk_score"],
         }
-    except Exception:
+    except Exception as exc:
         submission = db.get(Submission, submission_id)
         if submission:
             submission.status = SubmissionStatus.FAILED
             db.commit()
+        if isinstance(exc, ProgrammingError) and _looks_like_missing_yara_migration(exc):
+            logger.error(
+                "YARA columns are missing in DB schema. Run alembic upgrade head and restart services.",
+                extra={"submission_id": submission_id},
+            )
         logger.exception("process_file_submission failed", extra={"submission_id": submission_id})
         raise
     finally:
