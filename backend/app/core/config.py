@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     max_upload_size_mb: int = 20
     analysis_task_soft_time_limit_sec: int = 180
-    pe_deep_parse_max_size_mb: int = 8
+    pe_deep_parse_max_size_mb: int = 20
     yara_enabled: bool = True
     yara_rules_path: str = "app/yara_rules/base_rules.yar"
     yara_match_timeout_sec: int = 10
