@@ -25,3 +25,31 @@ MVP-платформа анализа файлов и URL на вредонос�
 - Path: `frontend/`
 - Stack: Next.js + TypeScript
 - Configure API base via `frontend/.env.example` -> `.env.local`
+
+# 1) Перейти в корень проекта
+cd /workspace/apollon
+# 2) Подготовить env для backend/infra
+cp .env.example .env
+# 3) Запустить backend-часть (API + worker + postgres + redis + minio)
+docker compose -f infra/docker-compose.yml up -d --build
+# 4) Применить миграции БД
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
+# 5) Проверить, что backend поднят
+docker compose -f infra/docker-compose.yml ps
+curl http://localhost:8000/
+curl http://localhost:8000/health/live
+curl http://localhost:8000/health/ready
+# 6) Подготовить frontend env
+cd /workspace/apollon/frontend
+cp .env.example .env.local
+# 7) Установить зависимости frontend
+npm install
+# 8) Запустить frontend (dev)
+npm run dev
+# 9) Открыть в браузере
+# frontend: http://localhost:3000
+# backend api: http://localhost:8000
+# minio console: http://localhost:9001
+# 10) Остановка всего backend-стека (из /workspace/apollon)
+cd /workspace/apollon
+docker compose -f infra/docker-compose.yml down
