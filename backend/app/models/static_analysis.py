@@ -40,5 +40,8 @@ class StaticAnalysisResult(Base):
     pe_sections: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
     imported_functions: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     suspicious_imports: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    yara_matches: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    yara_rule_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    yara_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
