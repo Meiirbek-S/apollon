@@ -12,6 +12,9 @@ type FileReport = {
   verdict_reason?: string | null
   risk_indicators?: string[] | null
   suspicious_imports?: string[] | null
+  yara_matched?: boolean | null
+  yara_match_count?: number | null
+  yara_rule_names?: string[] | null
   imported_functions?: string[] | null
   pe_sections?: unknown[] | null
   is_pe?: boolean | null
@@ -97,6 +100,7 @@ export function FileReportView({ report }: { report: FileReport }) {
         <div className="overview-card"><span>Размер</span><strong>{formatBytes(report.file_size)}</strong></div>
         <div className="overview-card"><span>Хэш</span><strong>{shortenHash(report.sha256)}</strong></div>
         <div className="overview-card"><span>PE-формат</span><strong>{report.is_pe ? 'Да' : 'Нет'}</strong></div>
+        <div className="overview-card"><span>YARA-совпадения</span><strong>{report.yara_match_count ?? 0}</strong></div>
         <div className="overview-card"><span>Дата компиляции</span><strong>{report.compile_timestamp || '-'}</strong></div>
       </div>
 
@@ -128,6 +132,19 @@ export function FileReportView({ report }: { report: FileReport }) {
         </div>
       </div>
 
+      <div className="card soft">
+        <h3>YARA-сигнатуры</h3>
+        {(report.yara_rule_names || []).length > 0 ? (
+          <div className="chips">
+            {report.yara_rule_names?.map((rule) => (
+              <span className="chip chip-risk" key={rule}>{rule}</span>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">YARA-совпадений не найдено.</p>
+        )}
+      </div>
+
       {report.is_pe && (
         <div className="card soft">
           <h3>Детали PE</h3>
@@ -156,6 +173,8 @@ export function FileReportView({ report }: { report: FileReport }) {
           <p><b>entry_point (точка входа):</b> {report.entry_point || '-'}</p>
           <p><b>image_base (базовый адрес):</b> {report.image_base || '-'}</p>
           <p><b>compile_timestamp:</b> {report.compile_timestamp || '-'}</p>
+          <p><b>yara_matched:</b> {String(report.yara_matched)}</p>
+          <p><b>yara_match_count:</b> {report.yara_match_count ?? 0}</p>
         </div>
 
         <h4>Подозрительные импорты (suspicious imports)</h4>
@@ -164,6 +183,8 @@ export function FileReportView({ report }: { report: FileReport }) {
         <JsonBlock data={report.imported_functions || []} />
         <h4>PE-секции (PE sections)</h4>
         <JsonBlock data={report.pe_sections || []} />
+        <h4>YARA rules</h4>
+        <JsonBlock data={report.yara_rule_names || []} />
       </details>
 
       <details className="card soft">

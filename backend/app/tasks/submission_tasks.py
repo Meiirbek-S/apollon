@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import filetype
 import pefile
+import yara
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.core.config import settings
@@ -226,6 +227,20 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
     if pe_info["pe_indicators"]:
         indicators.extend(pe_info["pe_indicators"])
 
+    yara_scan = _scan_with_yara(temp_path)
+    yara_rule_names = yara_scan["rule_names"]
+    if yara_rule_names:
+        base_yara_score = settings.yara_match_score
+        matches_bonus = min(30, 5 * len(yara_rule_names))
+        yara_score = base_yara_score + matches_bonus
+        score += yara_score
+        indicators.append(f"yara matched rules: {len(yara_rule_names)} (+{yara_score})")
+        for rule_name in yara_rule_names:
+            indicators.append(f"yara match: {rule_name}")
+
+    if yara_scan["error"]:
+        indicators.append(f"yara scan error: {yara_scan['error']}")
+
     risk_level = _score_to_level(score)
     verdict_reason = _build_verdict_reason(score, risk_level, indicators)
 
@@ -249,7 +264,34 @@ def _analyze_file(temp_path: str, original_filename: str) -> dict:
         "pe_sections": pe_info["sections"],
         "imported_functions": pe_info["imported_functions"],
         "suspicious_imports": pe_info["suspicious_imports"],
+        "yara_matched": bool(yara_rule_names),
+        "yara_match_count": len(yara_rule_names),
+        "yara_rule_names": yara_rule_names,
     }
+
+
+def _scan_with_yara(temp_path: str) -> dict[str, list[str] | str | None]:
+    if not settings.yara_enabled:
+        return {"rule_names": [], "error": None}
+
+    rules_dir = Path(settings.yara_rules_dir)
+    if not rules_dir.exists():
+        return {"rule_names": [], "error": f"rules dir not found: {rules_dir}"}
+
+    yara_files = sorted(rules_dir.glob("*.yar")) + sorted(rules_dir.glob("*.yara"))
+    if not yara_files:
+        return {"rule_names": [], "error": f"no yara files in: {rules_dir}"}
+
+    filepaths = {path.stem: str(path) for path in yara_files}
+
+    try:
+        compiled = yara.compile(filepaths=filepaths)
+        matches = compiled.match(temp_path)
+    except Exception as exc:
+        return {"rule_names": [], "error": str(exc)}
+
+    rule_names = sorted({match.rule for match in matches})
+    return {"rule_names": rule_names, "error": None}
 
 
 def _analyze_pe(temp_path: str, original_filename: str, file_size: int) -> dict:
@@ -391,6 +433,8 @@ def _build_verdict_reason(score: int, risk_level: RiskLevel, indicators: list[st
         categories.append("high entropy")
     if any("suspicious import:" in i for i in indicators):
         categories.append("suspicious imports")
+    if any("yara match:" in i for i in indicators):
+        categories.append("YARA signatures")
     if any("RWX section detected" in i for i in indicators):
         categories.append("RWX sections")
     if any("abnormal section name" in i for i in indicators):

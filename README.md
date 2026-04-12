@@ -10,6 +10,7 @@ MVP-платформа анализа файлов и URL на вредонос�
 - Шаг 5: базовый URL analysis (submission + worker + report)
 - Шаг 6: enhanced static file analysis (PE + scoring model v1)
 - Шаг 7: dynamic analysis prep (safe contracts + dry-run task)
+- Шаг 8: YARA signature scanning (rule-based detection + report integration)
 
 ## Документация по шагам
 - `STEP_01_BACKEND_FOUNDATION.md`
@@ -19,6 +20,7 @@ MVP-платформа анализа файлов и URL на вредонос�
 - `STEP_05_URL_ANALYSIS_MVP.md`
 - `STEP_06_ENHANCED_STATIC_FILE_ANALYSIS.md`
 - `STEP_07_DYNAMIC_ANALYSIS_PREP.md`
+- `STEP_08_YARA_SIGNATURES.md`
 
 
 ## Frontend MVP

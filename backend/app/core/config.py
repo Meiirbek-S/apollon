@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 20
     analysis_task_soft_time_limit_sec: int = 180
     pe_deep_parse_max_size_mb: int = 8
+    yara_enabled: bool = True
+    yara_rules_dir: str = "/app/yara_rules"
+    yara_match_score: int = 40
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",

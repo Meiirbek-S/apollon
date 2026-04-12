@@ -28,6 +28,12 @@ export function humanizeIndicatorRu(indicator: string): string {
   if (value.includes('suspicious import')) {
     return 'Обнаружены подозрительные функции в импортах.'
   }
+  if (value.includes('yara match')) {
+    return 'Сработала сигнатура YARA (известный паттерн угрозы).'
+  }
+  if (value.includes('yara matched rules')) {
+    return 'Обнаружены совпадения с YARA-сигнатурами.'
+  }
   if (value.includes('network') || value.includes('socket') || value.includes('http')) {
     return 'Файл содержит признаки сетевой активности.'
   }

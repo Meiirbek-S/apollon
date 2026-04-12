@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY app /app/app
 COPY alembic /app/alembic
+COPY yara_rules /app/yara_rules
 COPY alembic.ini /app/alembic.ini
 
 EXPOSE 8000
