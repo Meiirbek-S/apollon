@@ -234,8 +234,8 @@ def get_submission(submission_id: int, db: Session = Depends(get_db)) -> Submiss
 
 
 def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRead | None:
-    submission = db.get(Submission, submission_id)
-    if not submission:
+    origin_submission = db.get(Submission, submission_id)
+    if not origin_submission:
         return None
 
     result = db.query(StaticAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
@@ -244,6 +244,7 @@ def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRea
 
     current_id = submission_id
     visited: set[int] = set()
+    submission = origin_submission
 
     while current_id and current_id not in visited:
         visited.add(current_id)
@@ -257,11 +258,12 @@ def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRea
             return StaticAnalysisRead.model_validate(reused_result)
 
     # fallback для старых/несвязанных дедуп-цепочек: ищем готовый отчет по тому же sha256
-    if submission.sha256:
+    lookup_sha256 = origin_submission.sha256 or (submission.sha256 if submission else None)
+    if lookup_sha256:
         same_hash_result = (
             db.query(StaticAnalysisResult)
             .join(Submission, Submission.id == StaticAnalysisResult.submission_id)
-            .filter(Submission.sha256 == submission.sha256)
+            .filter(Submission.sha256 == lookup_sha256)
             .order_by(StaticAnalysisResult.created_at.desc())
             .first()
         )

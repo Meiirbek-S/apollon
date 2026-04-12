@@ -17,16 +17,18 @@ export class ApiError extends Error {
 async function toApiError(res: Response): Promise<ApiError> {
   let payload: unknown = null
   let detail: string | undefined
+  const rawText = await res.text()
 
-  try {
-    payload = await res.json()
-    if (payload && typeof payload === 'object' && 'detail' in payload) {
-      detail = String((payload as { detail?: unknown }).detail ?? '')
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText)
+      if (payload && typeof payload === 'object' && 'detail' in payload) {
+        detail = String((payload as { detail?: unknown }).detail ?? '')
+      }
+    } catch {
+      payload = rawText
+      detail = rawText
     }
-  } catch {
-    const text = await res.text()
-    payload = text
-    detail = text || undefined
   }
 
   return new ApiError(detail || `HTTP ${res.status}`, res.status, detail, payload)
