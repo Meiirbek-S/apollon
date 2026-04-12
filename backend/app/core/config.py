@@ -33,8 +33,6 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
-    virustotal_api_key: str | None = None
-    virustotal_timeout_sec: int = 15
 
     @computed_field
     @property

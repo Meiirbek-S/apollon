@@ -89,8 +89,4 @@ curl http://localhost:8000/api/v1/submissions/<submission_id>/report
 ```
 
 
-## Опционально: интеграция с VirusTotal API
-
-Если указан `VIRUSTOTAL_API_KEY` в `.env`, система дополнительно обогащает baseline-результаты реальными данными `last_analysis_results` из VirusTotal API по SHA-256.
-
-Без ключа используется локальная baseline-матрица мульти-AV (включая EICAR-сценарий) для demo и тестов.
+Результаты `antivirus_detection` формируются локально на основе встроенной baseline-матрицы движков и сигнатур (без обращения к внешним API).

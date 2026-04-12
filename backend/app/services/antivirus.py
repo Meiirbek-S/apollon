@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any
-from urllib import error, request
-
-from app.core.config import settings
 
 EICAR_MD5 = "44d88612fea8a8f36de82e1278abb02f"
 
@@ -26,12 +22,12 @@ _ENGINE_RULES: list[EngineRule] = [
     EngineRule("Antiy-AVL", "TestFile/Win32.EICAR"),
     EngineRule("Arcabit", "EICAR-Test-File (not A Virus)"),
     EngineRule("Avast", "EICAR Test-NOT Virus!!!"),
-    EngineRule("Avast-Mobile", "Eicar"),
     EngineRule("AVG", "EICAR Test-NOT Virus!!!"),
     EngineRule("Avira (no cloud)", "Eicar-Test-Signature"),
     EngineRule("Baidu", "Win32.Test.Eicar.a"),
     EngineRule("BitDefender", "EICAR-Test-File (not A Virus)"),
     EngineRule("ClamAV", "Eicar-Test-Signature"),
+    EngineRule("CTX", "Zip.virus.eicar"),
     EngineRule("Cynet", "Malicious (score: 99)"),
     EngineRule("DrWeb", "EICAR Test File (NOT A Virus!)"),
     EngineRule("Elastic", "Eicar"),
@@ -97,21 +93,10 @@ _ENGINE_RULES: list[EngineRule] = [
 
 
 def scan_file_with_antivirus_bases(*, sha256: str, md5: str) -> list[dict[str, Any]]:
-    """Return normalized multi-engine AV results.
-
-    Uses a local baseline matrix (including EICAR behavior) and optionally enriches
-    results from VirusTotal API when VIRUSTOTAL_API_KEY is configured.
-    """
+    """Return normalized multi-engine AV results from built-in engine signatures."""
+    _ = sha256
     is_eicar = md5.lower() == EICAR_MD5
-    baseline = _build_baseline_results(is_eicar=is_eicar)
-    vt_results = _fetch_virustotal_results(sha256=sha256)
-    if not vt_results:
-        return baseline
-
-    by_engine = {item["engine"]: item for item in baseline}
-    for item in vt_results:
-        by_engine[item["engine"]] = item
-    return sorted(by_engine.values(), key=lambda item: item["engine"].lower())
+    return _build_baseline_results(is_eicar=is_eicar)
 
 
 def _build_baseline_results(*, is_eicar: bool) -> list[dict[str, Any]]:
@@ -152,45 +137,3 @@ def _build_baseline_results(*, is_eicar: bool) -> list[dict[str, Any]]:
         )
 
     return sorted(results, key=lambda item: item["engine"].lower())
-
-
-def _fetch_virustotal_results(*, sha256: str) -> list[dict[str, Any]]:
-    api_key = settings.virustotal_api_key
-    if not api_key:
-        return []
-
-    url = f"https://www.virustotal.com/api/v3/files/{sha256}"
-    req = request.Request(url, headers={"x-apikey": api_key, "accept": "application/json"})
-    timeout_sec = settings.virustotal_timeout_sec
-
-    try:
-        with request.urlopen(req, timeout=timeout_sec) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except (error.URLError, error.HTTPError, TimeoutError, json.JSONDecodeError, OSError):
-        return []
-
-    last_results = (
-        data.get("data", {})
-        .get("attributes", {})
-        .get("last_analysis_results", {})
-    )
-    normalized: list[dict[str, Any]] = []
-
-    for engine, payload in last_results.items():
-        category = str(payload.get("category", "undetected"))
-        status = "detected" if category == "malicious" else "undetected"
-        if category in {"type-unsupported", "timeout"}:
-            status = "unable_to_process"
-        result_name = payload.get("result")
-
-        normalized.append(
-            {
-                "engine": engine,
-                "status": status,
-                "detected": status == "detected",
-                "threat_name": result_name,
-                "source": "virustotal",
-            }
-        )
-
-    return normalized

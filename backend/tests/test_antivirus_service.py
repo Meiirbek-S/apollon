@@ -13,6 +13,8 @@ class AntivirusServiceTests(unittest.TestCase):
         self.assertGreater(len(detected), 10)
         kaspersky = next(item for item in result if item["engine"] == "Kaspersky")
         self.assertTrue(kaspersky["detected"])
+        ctx = next(item for item in result if item["engine"] == "CTX")
+        self.assertEqual(ctx["status"], "detected")
 
     def test_non_eicar_mostly_undetected(self) -> None:
         result = scan_file_with_antivirus_bases(

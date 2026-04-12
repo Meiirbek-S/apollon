@@ -10,7 +10,7 @@ MVP-платформа анализа файлов и URL на вредонос�
 - Шаг 5: базовый URL analysis (submission + worker + report)
 - Шаг 6: enhanced static file analysis (PE + scoring model v1)
 - Шаг 7: dynamic analysis prep (safe contracts + dry-run task)
-- Дополнительно: мульти-AV baseline + опциональное VirusTotal API enrichment в file-report
+- Дополнительно: мульти-AV baseline (локальные AV сигнатуры) в file-report
 
 ## Документация по шагам
 - `STEP_01_BACKEND_FOUNDATION.md`
