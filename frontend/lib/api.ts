@@ -43,13 +43,21 @@ export type Submission = {
   target_url?: string | null
   sha256?: string | null
   status: string
+  dynamic_requested: boolean
+  dynamic_status: string
   created_at: string
 }
 
-export async function createFileSubmission(formData: FormData) {
+export async function createFileSubmission(formData: FormData, dynamicRequested = false) {
+  const payload = new FormData()
+  for (const [key, value] of formData.entries()) {
+    payload.append(key, value)
+  }
+  payload.append('dynamic_requested', dynamicRequested ? 'true' : 'false')
+
   const res = await fetch(`${API_BASE}/api/v1/submissions/file/upload`, {
     method: 'POST',
-    body: formData
+    body: payload
   })
   if (!res.ok) throw await toApiError(res)
   return res.json()
@@ -79,6 +87,13 @@ export async function getReport(id: string) {
 
 export async function getUrlReport(id: string) {
   const res = await fetch(`${API_BASE}/api/v1/submissions/${id}/url-report`, { cache: 'no-store' })
+  if (!res.ok) throw await toApiError(res)
+  return res.json()
+}
+
+
+export async function getDynamicReport(id: string) {
+  const res = await fetch(`${API_BASE}/api/v1/submissions/${id}/dynamic-report`, { cache: 'no-store' })
   if (!res.ok) throw await toApiError(res)
   return res.json()
 }

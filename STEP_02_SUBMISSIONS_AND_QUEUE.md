@@ -102,4 +102,4 @@ docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 - загрузку и хранение реального файла,
 - хэширование содержимого,
 - YARA/PE/static analyzer,
-- запуск в VirtualBox.
+- запуск в Container Sandbox.

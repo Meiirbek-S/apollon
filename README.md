@@ -53,3 +53,9 @@ npm run dev
 # 10) Остановка всего backend-стека (из /workspace/apollon)
 cd /workspace/apollon
 docker compose -f infra/docker-compose.yml down
+
+## Dynamic analysis (container/external providers)
+- Изоляция выполняется через Docker sandbox (`--network none`, `--read-only`, resource limits).
+- Поддержан альтернативный провайдер через внешний API (`dynamic_analysis_provider=external`).
+- Для файла можно запросить dynamic анализ через `dynamic_requested=true` в `POST /api/v1/submissions/file/upload`.
+- Результаты доступны в `GET /api/v1/submissions/{id}/report` (поля `dynamic_status`, `dynamic_report`) и `GET /api/v1/submissions/{id}/dynamic-report`.

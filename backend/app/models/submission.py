@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -15,6 +15,14 @@ class SubmissionType(StrEnum):
 class SubmissionStatus(StrEnum):
     QUEUED = "QUEUED"
     PROCESSING = "PROCESSING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+
+
+class DynamicAnalysisStatus(StrEnum):
+    NOT_REQUESTED = "NOT_REQUESTED"
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
     DONE = "DONE"
     FAILED = "FAILED"
 
@@ -35,5 +43,9 @@ class Submission(Base):
     )
     status: Mapped[SubmissionStatus] = mapped_column(
         Enum(SubmissionStatus), default=SubmissionStatus.QUEUED, nullable=False
+    )
+    dynamic_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    dynamic_status: Mapped[DynamicAnalysisStatus] = mapped_column(
+        Enum(DynamicAnalysisStatus), default=DynamicAnalysisStatus.NOT_REQUESTED, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)

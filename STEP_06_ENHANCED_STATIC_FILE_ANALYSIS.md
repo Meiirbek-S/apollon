@@ -1,6 +1,6 @@
 # Шаг 6: Enhanced static file analysis (MVP v2 scoring)
 
-На этом шаге усиливаем file static-report без VirtualBox и без YARA.
+На этом шаге усиливаем file static-report без Container Sandbox и без YARA.
 
 ## Что добавлено в report
 

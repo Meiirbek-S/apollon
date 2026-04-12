@@ -4,14 +4,15 @@ import tempfile
 from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.models.dynamic_analysis import DynamicAnalysisResult
 from app.models.static_analysis import StaticAnalysisResult
-from app.models.submission import Submission, SubmissionStatus, SubmissionType
+from app.models.submission import DynamicAnalysisStatus, Submission, SubmissionStatus, SubmissionType
 from app.models.url_analysis import UrlAnalysisResult
 from app.schemas.submission import (
     FileSubmissionCreate,
@@ -22,7 +23,7 @@ from app.schemas.submission import (
     UrlSubmissionCreate,
 )
 from app.services.object_storage import ensure_bucket_exists, get_minio_client, upload_file
-from app.tasks.submission_tasks import process_file_submission, process_url_submission
+from app.tasks.submission_tasks import process_dynamic_submission, process_file_submission, process_url_submission
 
 router = APIRouter(prefix="/api/v1/submissions", tags=["submissions"])
 
@@ -37,6 +38,8 @@ def create_file_submission(payload: FileSubmissionCreate, db: Session = Depends(
         filename=payload.filename,
         sha256=payload.sha256,
         status=SubmissionStatus.QUEUED,
+        dynamic_requested=False,
+        dynamic_status=DynamicAnalysisStatus.NOT_REQUESTED,
     )
     db.add(submission)
     db.commit()
@@ -59,6 +62,8 @@ def create_url_submission(payload: UrlSubmissionCreate, db: Session = Depends(ge
         filename=normalized,
         target_url=normalized,
         status=SubmissionStatus.QUEUED,
+        dynamic_requested=False,
+        dynamic_status=DynamicAnalysisStatus.NOT_REQUESTED,
     )
     db.add(submission)
     db.commit()
@@ -70,7 +75,11 @@ def create_url_submission(payload: UrlSubmissionCreate, db: Session = Depends(ge
 
 
 @router.post("/file/upload", response_model=SubmissionCreateResponse, status_code=201)
-def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(get_db)) -> SubmissionCreateResponse:
+def upload_file_submission(
+    file: UploadFile = File(...),
+    dynamic_requested: bool = Form(False),
+    db: Session = Depends(get_db),
+) -> SubmissionCreateResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="filename is required")
 
@@ -116,7 +125,6 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
         source_report = db.query(StaticAnalysisResult).filter_by(submission_id=source_with_report.id).one_or_none()
         has_ready_report = bool(source_report and _is_static_report_complete(source_report))
 
-    # CASE 1: есть готовый повторно используемый отчет -> deduplicated=true и DONE без нового анализа
     if source_with_report is not None and has_ready_report:
         os.unlink(temp_path)
         submission = Submission(
@@ -128,20 +136,25 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
             storage_key=source_with_report.storage_key,
             reused_from_submission_id=source_with_report.id,
             status=SubmissionStatus.DONE,
+            dynamic_requested=dynamic_requested,
+            dynamic_status=DynamicAnalysisStatus.QUEUED if dynamic_requested else DynamicAnalysisStatus.NOT_REQUESTED,
         )
         db.add(submission)
         db.commit()
         db.refresh(submission)
+        if dynamic_requested:
+            process_dynamic_submission.delay(submission.id)
+
         return SubmissionCreateResponse(
             submission_id=submission.id,
             status=submission.status,
             task_id="reused-existing-report",
             deduplicated=True,
             reused_from_submission_id=source_with_report.id,
+            dynamic_requested=dynamic_requested,
+            dynamic_status=submission.dynamic_status,
         )
 
-    # CASE 2: готового отчета нет -> НЕ считаем это dedup-готовым результатом.
-    # Можно переиспользовать уже загруженный артефакт, но анализ запускается заново.
     if latest_artifact and latest_artifact.storage_key:
         os.unlink(temp_path)
         submission = Submission(
@@ -152,6 +165,8 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
             size_bytes=latest_artifact.size_bytes,
             storage_key=latest_artifact.storage_key,
             status=SubmissionStatus.QUEUED,
+            dynamic_requested=dynamic_requested,
+            dynamic_status=DynamicAnalysisStatus.QUEUED if dynamic_requested else DynamicAnalysisStatus.NOT_REQUESTED,
         )
         db.add(submission)
         db.commit()
@@ -164,6 +179,8 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
             task_id=task.id,
             deduplicated=False,
             reused_from_submission_id=None,
+            dynamic_requested=dynamic_requested,
+            dynamic_status=submission.dynamic_status,
         )
 
     client = get_minio_client()
@@ -184,6 +201,8 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
         size_bytes=total_size,
         storage_key=object_name,
         status=SubmissionStatus.QUEUED,
+        dynamic_requested=dynamic_requested,
+        dynamic_status=DynamicAnalysisStatus.QUEUED if dynamic_requested else DynamicAnalysisStatus.NOT_REQUESTED,
     )
     db.add(submission)
     db.commit()
@@ -196,18 +215,15 @@ def upload_file_submission(file: UploadFile = File(...), db: Session = Depends(g
         status=submission.status,
         task_id=task.id,
         deduplicated=False,
+        dynamic_requested=dynamic_requested,
+        dynamic_status=submission.dynamic_status,
     )
 
 
-
-
 def _is_static_report_complete(report: StaticAnalysisResult) -> bool:
-    # базовые поля должны быть заполнены
     if not (report.original_filename and report.verdict_reason):
         return False
 
-    # после scoring v2, если есть suspicious imports,
-    # ожидаем детальные индикаторы вида "suspicious import: ... (+N)".
     if report.suspicious_imports:
         has_weighted_import_indicator = any(
             indicator.startswith("suspicious import:") for indicator in (report.risk_indicators or [])
@@ -216,6 +232,7 @@ def _is_static_report_complete(report: StaticAnalysisResult) -> bool:
             return False
 
     return True
+
 
 @router.get("/{submission_id}", response_model=SubmissionRead)
 def get_submission(submission_id: int, db: Session = Depends(get_db)) -> SubmissionRead:
@@ -248,7 +265,6 @@ def _resolve_static_report(submission_id: int, db: Session) -> StaticAnalysisRea
         if reused_result:
             return StaticAnalysisRead.model_validate(reused_result)
 
-    # fallback для старых/несвязанных дедуп-цепочек: ищем готовый отчет по тому же sha256
     if submission.sha256:
         same_hash_result = (
             db.query(StaticAnalysisResult)
@@ -284,7 +300,29 @@ def get_report(submission_id: int, db: Session = Depends(get_db)) -> dict[str, A
             if submission.filename:
                 payload["original_filename"] = submission.filename
 
-        return {"report_type": "FILE", "report": payload}
+        dynamic = db.query(DynamicAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
+        return {
+            "report_type": "FILE",
+            "report": payload,
+            "dynamic_status": submission.dynamic_status,
+            "dynamic_requested": submission.dynamic_requested,
+            "dynamic_report": None
+            if not dynamic
+            else {
+                "provider": dynamic.provider,
+                "sandbox_id": dynamic.sandbox_id,
+                "risk_score": dynamic.risk_score,
+                "risk_level": dynamic.risk_level,
+                "suspicious_actions": dynamic.suspicious_actions,
+                "network_connections": dynamic.network_connections,
+                "file_changes": dynamic.file_changes,
+                "registry_changes": dynamic.registry_changes,
+                "verdict_reason": dynamic.verdict_reason,
+                "raw_report": dynamic.raw_report,
+                "analyzed_at": dynamic.analyzed_at.isoformat() if dynamic.analyzed_at else None,
+                "created_at": dynamic.created_at.isoformat() if dynamic.created_at else None,
+            },
+        }
 
     if submission.source_type == SubmissionType.URL:
         url_report = db.query(UrlAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
@@ -301,3 +339,61 @@ def get_url_report(submission_id: int, db: Session = Depends(get_db)) -> UrlAnal
     if not result:
         raise HTTPException(status_code=404, detail="url analysis report not found")
     return UrlAnalysisRead.model_validate(result)
+
+
+@router.get("/{submission_id}/dynamic-report", response_model=dict[str, Any])
+def get_dynamic_report(submission_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    submission = db.get(Submission, submission_id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="submission not found")
+
+    result = db.query(DynamicAnalysisResult).filter_by(submission_id=submission_id).one_or_none()
+
+    if not submission.dynamic_requested:
+        return {
+            "submission_id": submission_id,
+            "dynamic_requested": False,
+            "dynamic_status": submission.dynamic_status,
+            "message": "dynamic analysis was not requested",
+            "report": None,
+        }
+
+    if not result:
+        if submission.dynamic_status in {DynamicAnalysisStatus.QUEUED, DynamicAnalysisStatus.RUNNING}:
+            return {
+                "submission_id": submission_id,
+                "dynamic_requested": True,
+                "dynamic_status": submission.dynamic_status,
+                "message": "dynamic analysis is in progress",
+                "report": None,
+            }
+        if submission.dynamic_status == DynamicAnalysisStatus.FAILED:
+            return {
+                "submission_id": submission_id,
+                "dynamic_requested": True,
+                "dynamic_status": submission.dynamic_status,
+                "message": "dynamic analysis failed",
+                "report": None,
+            }
+        raise HTTPException(status_code=404, detail="dynamic analysis report not found")
+
+    return {
+        "submission_id": submission_id,
+        "dynamic_requested": True,
+        "dynamic_status": submission.dynamic_status,
+        "message": "dynamic analysis completed",
+        "report": {
+            "provider": result.provider,
+            "sandbox_id": result.sandbox_id,
+            "risk_score": result.risk_score,
+            "risk_level": result.risk_level,
+            "suspicious_actions": result.suspicious_actions,
+            "network_connections": result.network_connections,
+            "file_changes": result.file_changes,
+            "registry_changes": result.registry_changes,
+            "verdict_reason": result.verdict_reason,
+            "raw_report": result.raw_report,
+            "analyzed_at": result.analyzed_at,
+            "created_at": result.created_at,
+        },
+    }

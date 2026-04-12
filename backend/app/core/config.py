@@ -1,4 +1,4 @@
-from pydantic import computed_field
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,10 +28,24 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 20
     analysis_task_soft_time_limit_sec: int = 180
     pe_deep_parse_max_size_mb: int = 8
+    dynamic_analysis_provider: str = "docker"
+    dynamic_docker_image: str = "alpine:3.20"
+    dynamic_external_api_url: str | None = None
+    dynamic_external_api_key: str | None = None
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            v = value.strip()
+            if v.startswith("["):
+                return value
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return value
 
     @computed_field
     @property

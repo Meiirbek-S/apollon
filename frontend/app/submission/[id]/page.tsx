@@ -15,6 +15,8 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
         <div className="overview-card"><span>Filename / URL</span><strong>{submission.filename}</strong></div>
         <div className="overview-card"><span>target_url</span><strong>{submission.target_url ?? '-'}</strong></div>
         <div className="overview-card"><span>sha256</span><strong>{submission.sha256 ?? '-'}</strong></div>
+        <div className="overview-card"><span>dynamic_requested</span><strong>{String(submission.dynamic_requested)}</strong></div>
+        <div className="overview-card"><span>dynamic_status</span><strong>{submission.dynamic_status}</strong></div>
       </div>
       <p className="muted">created_at: {submission.created_at}</p>
       <div className="row action-row">

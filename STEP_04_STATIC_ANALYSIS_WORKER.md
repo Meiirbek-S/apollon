@@ -105,5 +105,5 @@ curl http://localhost:8000/api/v1/submissions/<submission_id>/report
 Пока не делаем:
 - YARA,
 - PE-секции и entropy,
-- dynamic analysis в VirtualBox,
+- dynamic analysis в Container Sandbox,
 - полноценный risk scoring на десятках признаков.
