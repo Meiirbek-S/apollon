@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.models.static_analysis import RiskLevel
-from app.models.submission import SubmissionStatus, SubmissionType
+from app.models.submission import DynamicAnalysisStatus, SubmissionStatus, SubmissionType
 
 
 class FileSubmissionCreate(BaseModel):
@@ -22,6 +22,8 @@ class SubmissionCreateResponse(BaseModel):
     task_id: str
     deduplicated: bool = False
     reused_from_submission_id: int | None = None
+    dynamic_requested: bool = False
+    dynamic_status: DynamicAnalysisStatus = DynamicAnalysisStatus.NOT_REQUESTED
 
 
 class SubmissionRead(BaseModel):
@@ -35,6 +37,8 @@ class SubmissionRead(BaseModel):
     storage_key: str | None
     reused_from_submission_id: int | None
     status: SubmissionStatus
+    dynamic_requested: bool
+    dynamic_status: DynamicAnalysisStatus
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -86,6 +90,24 @@ class UrlAnalysisRead(BaseModel):
     risk_level: RiskLevel
     risk_indicators: list[str]
     verdict_reason: str
+    analyzed_at: datetime
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DynamicAnalysisRead(BaseModel):
+    submission_id: int
+    provider: str
+    sandbox_id: str | None
+    risk_score: int
+    risk_level: RiskLevel
+    suspicious_actions: list[str]
+    network_connections: list[dict[str, Any]]
+    file_changes: list[str]
+    registry_changes: list[str]
+    verdict_reason: str
+    raw_report: dict[str, Any]
     analyzed_at: datetime
     created_at: datetime
 

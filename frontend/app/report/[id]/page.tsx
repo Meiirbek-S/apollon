@@ -6,6 +6,9 @@ import { getReport, getSubmission, getUrlReport, isApiError } from '@/lib/api'
 type ReportResponse = {
   report_type: 'FILE' | 'URL'
   report: any
+  dynamic_status?: string
+  dynamic_requested?: boolean
+  dynamic_report?: any
 }
 
 export default async function ReportPage({ params }: { params: Promise<{ id: string }> }) {
@@ -55,59 +58,61 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
   return renderPage()
 
   function renderPage() {
-  const report = reportResponse?.report
+    const report = reportResponse?.report
 
-  return (
-    <div className="card">
-      <h2>Report for submission #{id}</h2>
+    return (
+      <div className="card">
+        <h2>Report for submission #{id}</h2>
 
-      <div className="card soft">
-        <h3>Submission Summary</h3>
-        <div className="overview-grid compact">
-          <div className="overview-card"><span>Submission ID</span><strong>{submission.id}</strong></div>
-          <div className="overview-card"><span>Status</span><strong>{submission.status}</strong></div>
-          <div className="overview-card"><span>Source type</span><strong>{submission.source_type}</strong></div>
+        <div className="card soft">
+          <h3>Submission Summary</h3>
+          <div className="overview-grid compact">
+            <div className="overview-card"><span>Submission ID</span><strong>{submission.id}</strong></div>
+            <div className="overview-card"><span>Status</span><strong>{submission.status}</strong></div>
+            <div className="overview-card"><span>Source type</span><strong>{submission.source_type}</strong></div>
+            <div className="overview-card"><span>Dynamic requested</span><strong>{String(submission.dynamic_requested)}</strong></div>
+            <div className="overview-card"><span>Dynamic status</span><strong>{reportResponse?.dynamic_status || submission.dynamic_status}</strong></div>
+          </div>
         </div>
+
+        {reportResponse?.report_type === 'FILE' && (
+          <FileReportView report={report} dynamicStatus={reportResponse.dynamic_status} dynamicReport={reportResponse.dynamic_report} />
+        )}
+
+        {reportResponse?.report_type === 'URL' && (
+          <UrlReportView report={report} />
+        )}
+
+        {!reportResponse && submission.source_type === 'URL' && (
+          <div className="card empty-state">
+            <h3>Отчет еще не готов</h3>
+            <p>URL-анализ выполняется или был завершен без сохраненного отчета.</p>
+            <p>{pendingReason || 'Результат URL-анализа пока не найден.'}</p>
+          </div>
+        )}
+
+        {!reportResponse && submission.source_type === 'FILE' && pendingReason && (
+          <div className="card empty-state">
+            <h3>Отчет еще не готов</h3>
+            <p>{pendingReason}</p>
+          </div>
+        )}
+
+        {!reportResponse && submission.source_type === 'FILE' && unavailableReason && (
+          <div className="card empty-state">
+            <h3>Отчет недоступен</h3>
+            <p>{unavailableReason}</p>
+            <p className="muted">submission status: {submission.status}</p>
+          </div>
+        )}
+
+        {reportResponse && (
+          <>
+            <h3>{reportResponse.report_type === 'FILE' ? 'Сырой отчет (JSON)' : 'Raw report payload'}</h3>
+            <JsonBlock data={reportResponse} />
+          </>
+        )}
       </div>
-
-      {reportResponse?.report_type === 'FILE' && (
-        <FileReportView report={report} />
-      )}
-
-      {reportResponse?.report_type === 'URL' && (
-        <UrlReportView report={report} />
-      )}
-
-      {!reportResponse && submission.source_type === 'URL' && (
-        <div className="card empty-state">
-          <h3>Отчет еще не готов</h3>
-          <p>URL-анализ выполняется или был завершен без сохраненного отчета.</p>
-          <p>{pendingReason || 'Результат URL-анализа пока не найден.'}</p>
-        </div>
-      )}
-
-      {!reportResponse && submission.source_type === 'FILE' && pendingReason && (
-        <div className="card empty-state">
-          <h3>Отчет еще не готов</h3>
-          <p>{pendingReason}</p>
-        </div>
-      )}
-
-      {!reportResponse && submission.source_type === 'FILE' && unavailableReason && (
-        <div className="card empty-state">
-          <h3>Отчет недоступен</h3>
-          <p>{unavailableReason}</p>
-          <p className="muted">submission status: {submission.status}</p>
-        </div>
-      )}
-
-      {reportResponse && (
-        <>
-          <h3>{reportResponse.report_type === 'FILE' ? 'Сырой отчет (JSON)' : 'Raw report payload'}</h3>
-          <JsonBlock data={reportResponse} />
-        </>
-      )}
-    </div>
-  )
+    )
   }
 }

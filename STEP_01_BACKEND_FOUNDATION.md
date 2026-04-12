@@ -6,7 +6,7 @@
 - health-check эндпоинты,
 - готовность к следующему шагу (DB-модели, очередь Celery, загрузка файлов).
 
-> На этом шаге **нет** запуска файлов, **нет** dynamic analysis, **нет** VirtualBox orchestration.
+> На этом шаге **нет** запуска файлов, **нет** dynamic analysis, **нет** Container Sandbox orchestration.
 
 ---
 

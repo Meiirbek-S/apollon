@@ -75,5 +75,5 @@ curl http://localhost:8000/api/v1/submissions/<submission_id>
 
 Что пока не делаем:
 - static analysis (YARA/PE/entropy),
-- dynamic analysis (VirtualBox),
+- dynamic analysis (Container Sandbox),
 - вердикты и risk scoring.

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 20
     analysis_task_soft_time_limit_sec: int = 180
     pe_deep_parse_max_size_mb: int = 8
+    dynamic_analysis_provider: str = "docker"
+    dynamic_docker_image: str = "alpine:3.20"
+    dynamic_external_api_url: str | None = None
+    dynamic_external_api_key: str | None = None
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",

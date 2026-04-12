@@ -72,7 +72,24 @@ function getTopReasons(report: FileReport): string[] {
   return unique.slice(0, 6)
 }
 
-export function FileReportView({ report }: { report: FileReport }) {
+type DynamicReport = {
+  provider?: string
+  sandbox_id?: string | null
+  risk_score?: number
+  risk_level?: string
+  suspicious_actions?: string[]
+  verdict_reason?: string
+}
+
+export function FileReportView({
+  report,
+  dynamicStatus,
+  dynamicReport,
+}: {
+  report: FileReport
+  dynamicStatus?: string
+  dynamicReport?: DynamicReport | null
+}) {
   const verdict = normalizeVerdict(report)
   const reasons = getTopReasons(report)
 
@@ -140,6 +157,30 @@ export function FileReportView({ report }: { report: FileReport }) {
         </div>
       )}
 
+
+
+      <div className="card soft">
+        <h3>Динамический анализ</h3>
+        <p><b>Статус:</b> {dynamicStatus || 'NOT_REQUESTED'}</p>
+        {dynamicReport ? (
+          <>
+            <p><b>Провайдер:</b> {dynamicReport.provider || '-'}</p>
+            <p><b>Вердикт:</b> {dynamicReport.verdict_reason || '-'}</p>
+            <p><b>Risk score:</b> {dynamicReport.risk_score ?? 0}</p>
+            <div className="chips">
+              {(dynamicReport.suspicious_actions || []).length > 0 ? (
+                dynamicReport.suspicious_actions?.map((item) => (
+                  <span className="chip chip-risk" key={item}>{item}</span>
+                ))
+              ) : (
+                <span className="muted">Подозрительные действия не обнаружены.</span>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="muted">Динамический отчет пока недоступен или не был запрошен.</p>
+        )}
+      </div>
       <div className="card soft">
         <h3>Что это значит</h3>
         <p>{meaningText(verdict)}</p>

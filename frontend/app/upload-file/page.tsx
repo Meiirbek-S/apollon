@@ -6,6 +6,7 @@ import { createFileSubmission } from '@/lib/api'
 
 export default function UploadFilePage() {
   const [file, setFile] = useState<File | null>(null)
+  const [dynamicRequested, setDynamicRequested] = useState(false)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
@@ -21,7 +22,7 @@ export default function UploadFilePage() {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const data = await createFileSubmission(formData)
+      const data = await createFileSubmission(formData, dynamicRequested)
       setResult(data)
     } catch (err: any) {
       setError(err.message || 'Upload failed')
@@ -36,6 +37,14 @@ export default function UploadFilePage() {
       <p className="muted">Загрузите файл для статического анализа и расчета risk score.</p>
       <form onSubmit={onSubmit} className="row">
         <input className="input-control" type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        <label className="muted" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={dynamicRequested}
+            onChange={(e) => setDynamicRequested(e.target.checked)}
+          />
+          Запустить динамический анализ (Docker sandbox / external API)
+        </label>
         <button disabled={!file || loading} type="submit">
           {loading ? 'Uploading...' : 'Upload & Analyze'}
         </button>
@@ -60,6 +69,8 @@ export default function UploadFilePage() {
           <p><b>status:</b> {result.status}</p>
           <p><b>source_type:</b> FILE</p>
           <p><b>deduplicated:</b> {String(result.deduplicated)}</p>
+          <p><b>dynamic_requested:</b> {String(result.dynamic_requested)}</p>
+          <p><b>dynamic_status:</b> {result.dynamic_status}</p>
           {result.reused_from_submission_id && (
             <p><b>reused_from_submission_id:</b> {result.reused_from_submission_id}</p>
           )}

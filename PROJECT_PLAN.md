@@ -1,4 +1,4 @@
-# MVP-проект: веб-система анализа файлов и URL (VirusTotal-подобная, с песочницей VirtualBox)
+# MVP-проект: веб-система анализа файлов и URL (VirusTotal-подобная, с песочницей Container Sandbox)
 
 ## 1) С чего начинать: стратегия реализации по этапам
 
@@ -8,7 +8,7 @@
 - Определить границы MVP и критерии demo-ready.
 - Завести monorepo со структурой сервисов.
 - Подготовить базовую инфраструктуру: Docker Compose для backend-частей (API, worker, Redis, PostgreSQL, MinIO).
-- **Важно:** подсистема запуска подозрительных файлов работает **вне Docker**, только через VirtualBox VM.
+- **Важно:** подсистема запуска подозрительных файлов работает **вне Docker**, только через Container Sandbox VM.
 
 ### Этап 1. Базовый backend + статический анализ (4–6 дней)
 - Реализовать API загрузки файла/URL и создания задач анализа.
@@ -28,7 +28,7 @@
 - Детект признаков риска (возраст домена, редиректы, cert anomalies).
 - Включение URL-score в общую модель риска.
 
-### Этап 3. Dynamic Analyzer через VirtualBox (6–10 дней)
+### Этап 3. Dynamic Analyzer через Container Sandbox (6–10 дней)
 - Поднять отдельную Windows VM для анализа.
 - Настроить lifecycle:
   - restore snapshot,
@@ -83,12 +83,12 @@
    - извлечение признаков и формирование промежуточного verdict.
 
 5. **Dynamic Analyzer Service (Orchestrator)**
-   - управление VirtualBox через VBoxManage,
+   - управление Container Sandbox через Docker CLI/API,
    - orchestration шага анализа,
    - сбор артефактов из VM,
    - контроль таймаута и rollback.
 
-6. **VirtualBox Controller**
+6. **Container Sandbox Controller**
    - отдельный модуль/процесс со строгим API,
    - операции: restore snapshot, start VM, copy-in/copy-out, execute, poweroff.
 
@@ -125,11 +125,11 @@
 - **DB:** PostgreSQL.
 - **Storage:** MinIO (локально) или S3.
 - **Static analysis libs:** pefile, yara-python, python-magic, hashlib.
-- **Dynamic sandbox:** VirtualBox + VBoxManage + Windows VM agent.
+- **Dynamic sandbox:** Container Sandbox + Docker CLI/API + Windows VM agent.
 - **Observability:** structlog/loguru + Prometheus (минимум health + task metrics).
 - **Containerization:** Docker Compose для API/worker/db/redis/storage.
 
-**Ключевой принцип:** Docker — для сервисной части, а **выполнение подозрительных объектов только внутри VirtualBox VM**.
+**Ключевой принцип:** Docker — для сервисной части, а **выполнение подозрительных объектов только внутри Container Sandbox VM**.
 
 ---
 
@@ -171,7 +171,7 @@
 
 ## 5) Безопасность (обязательно)
 
-## Изоляция и VirtualBox
+## Изоляция и Container Sandbox
 - Отдельный хост/узел для sandbox (не на dev-машине).
 - VM сеть: Host-only/NAT с жесткой фильтрацией; без bridge в prod по умолчанию.
 - Отключить clipboard drag&drop/shared folders.
@@ -204,7 +204,7 @@
 ### Что обязательно в MVP
 - Upload file + URL submit.
 - Static analysis (hash/type/PE/YARA + базовая эвристика).
-- Базовый Dynamic sandbox цикл в VirtualBox.
+- Базовый Dynamic sandbox цикл в Container Sandbox.
 - Risk scoring и финальный отчет с категориями SAFE/SUSPICIOUS/MALWARE-LIKE.
 - История задач и просмотр отчетов.
 
@@ -230,7 +230,7 @@
 - [ ] Frontend: upload/status/report
 
 ## Спринт 2
-- [ ] VirtualBox Controller (snapshot restore/start/exec/collect/rollback)
+- [ ] Container Sandbox Controller (snapshot restore/start/exec/collect/rollback)
 - [ ] Dynamic artifacts parser
 - [ ] Интеграция dynamic verdict в общий report
 - [ ] Audit logging + rate limit + file constraints

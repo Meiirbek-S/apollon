@@ -14,9 +14,11 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from app.core.config import settings
 from app.db.session import SessionLocal
+from app.models.dynamic_analysis import DynamicAnalysisResult
 from app.models.static_analysis import RiskLevel, StaticAnalysisResult
-from app.models.submission import Submission, SubmissionStatus
+from app.models.submission import DynamicAnalysisStatus, Submission, SubmissionStatus
 from app.models.url_analysis import UrlAnalysisResult
+from app.services.dynamic_analyzer import build_dynamic_analyzer, compute_sha256
 from app.services.object_storage import download_file, get_minio_client
 from app.tasks.celery_app import celery_app
 
@@ -75,7 +77,13 @@ def _process_file_submission_impl(submission_id: int) -> dict[str, int | str]:
         db.add(result)
 
         submission.status = SubmissionStatus.DONE
-        db.commit()
+        if submission.dynamic_requested:
+            submission.dynamic_status = DynamicAnalysisStatus.QUEUED
+            db.commit()
+            process_dynamic_submission.delay(submission.id)
+        else:
+            submission.dynamic_status = DynamicAnalysisStatus.NOT_REQUESTED
+            db.commit()
 
         return {
             "submission_id": submission_id,
@@ -151,7 +159,13 @@ def _process_url_submission_impl(submission_id: int) -> dict[str, int | str]:
         )
         db.add(result)
         submission.status = SubmissionStatus.DONE
-        db.commit()
+        if submission.dynamic_requested:
+            submission.dynamic_status = DynamicAnalysisStatus.QUEUED
+            db.commit()
+            process_dynamic_submission.delay(submission.id)
+        else:
+            submission.dynamic_status = DynamicAnalysisStatus.NOT_REQUESTED
+            db.commit()
 
         return {
             "submission_id": submission_id,
@@ -191,6 +205,73 @@ def process_url_submission(submission_id: int) -> dict[str, int | str]:
 def process_url_submission_legacy(submission_id: int) -> dict[str, int | str]:
     return _process_url_submission_impl(submission_id)
 
+
+
+def _process_dynamic_submission_impl(submission_id: int) -> dict[str, int | str]:
+    db = SessionLocal()
+    temp_path = None
+    try:
+        submission = db.get(Submission, submission_id)
+        if not submission:
+            return {"submission_id": submission_id, "result": "submission_not_found"}
+
+        if not submission.storage_key:
+            submission.dynamic_status = DynamicAnalysisStatus.FAILED
+            db.commit()
+            return {"submission_id": submission_id, "result": "missing_storage_key"}
+
+        submission.dynamic_status = DynamicAnalysisStatus.RUNNING
+        db.commit()
+
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            temp_path = tmp.name
+
+        client = get_minio_client()
+        download_file(client, submission.storage_key, temp_path)
+        analyzer = build_dynamic_analyzer()
+        report = analyzer.analyze(
+            sample_path=temp_path,
+            filename=submission.filename,
+            sha256=compute_sha256(temp_path),
+        )
+
+        existing = db.query(DynamicAnalysisResult).filter_by(submission_id=submission.id).one_or_none()
+        if existing:
+            db.delete(existing)
+            db.commit()
+
+        dynamic_result = DynamicAnalysisResult(submission_id=submission.id, **report)
+        db.add(dynamic_result)
+        submission.dynamic_status = DynamicAnalysisStatus.DONE
+        db.commit()
+
+        return {
+            "submission_id": submission_id,
+            "result": "dynamic_analyzed",
+            "risk": str(report["risk_level"].value),
+            "risk_score": int(report["risk_score"]),
+        }
+    except Exception:
+        submission = db.get(Submission, submission_id)
+        if submission:
+            submission.dynamic_status = DynamicAnalysisStatus.FAILED
+            db.commit()
+        logger.exception("process_dynamic_submission failed", extra={"submission_id": submission_id})
+        raise
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+        db.close()
+
+
+@celery_app.task(name="submission.process_dynamic", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
+def process_dynamic_submission(submission_id: int) -> dict[str, int | str]:
+    return _process_dynamic_submission_impl(submission_id)
+
+
+@celery_app.task(name="app.tasks.submission_tasks.process_dynamic_submission", soft_time_limit=settings.analysis_task_soft_time_limit_sec)
+def process_dynamic_submission_legacy(submission_id: int) -> dict[str, int | str]:
+    return _process_dynamic_submission_impl(submission_id)
 
 def _analyze_file(temp_path: str, original_filename: str) -> dict:
     md5_hash = hashlib.md5()
